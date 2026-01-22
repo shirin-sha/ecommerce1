@@ -11,6 +11,14 @@ export const connectDatabase = async (): Promise<void> => {
     }
 
     const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/ecommerce'
+    
+    // Log connection attempt (without exposing full URI)
+    console.log('Attempting to connect to MongoDB...')
+    console.log('MONGO_URI is set:', !!process.env.MONGO_URI)
+    if (!process.env.MONGO_URI) {
+      console.error('⚠️ MONGO_URI environment variable is not set!')
+      console.error('Using fallback:', mongoUri)
+    }
 
     // If connection exists but is not ready, close it first
     if (mongoose.connection.readyState !== 0) {

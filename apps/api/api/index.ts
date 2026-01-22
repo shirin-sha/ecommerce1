@@ -26,6 +26,7 @@ const getAllowedOrigins = () => {
   const origins = [
     process.env.FRONTEND_URL,
     process.env.ADMIN_URL,
+    process.env.STOREFRONT_URL,
   ]
   
   // Add Vercel preview URLs if available
@@ -36,14 +37,33 @@ const getAllowedOrigins = () => {
     origins.push(`https://${process.env.VERCEL_BRANCH_URL}`)
   }
   
-  return origins.filter(Boolean) as string[]
+  // In development, allow localhost
+  if (process.env.NODE_ENV !== 'production') {
+    origins.push('http://localhost:3000', 'http://localhost:3001', 'http://localhost:5000')
+  }
+  
+  const filtered = origins.filter(Boolean) as string[]
+  console.log('Allowed CORS origins:', filtered)
+  return filtered
 }
 
 // Middleware
 app.use(helmet())
 app.use(
   cors({
-    origin: getAllowedOrigins(),
+    origin: (origin, callback) => {
+      const allowedOrigins = getAllowedOrigins()
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin || allowedOrigins.length === 0) {
+        return callback(null, true)
+      }
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        console.warn('CORS blocked origin:', origin)
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
     credentials: true,
   })
 )
@@ -54,6 +74,23 @@ app.use(cookieParser())
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+// Debug endpoint to check environment variables (remove in production if needed)
+app.get('/debug/env', (req, res) => {
+  // Don't expose sensitive values, just check if they exist
+  res.json({
+    hasMONGO_URI: !!process.env.MONGO_URI,
+    hasJWT_SECRET: !!process.env.JWT_SECRET,
+    hasJWT_REFRESH_SECRET: !!process.env.JWT_REFRESH_SECRET,
+    NODE_ENV: process.env.NODE_ENV,
+    hasADMIN_URL: !!process.env.ADMIN_URL,
+    hasSTOREFRONT_URL: !!process.env.STOREFRONT_URL,
+    // Show first few chars of MONGO_URI for debugging (safe)
+    MONGO_URI_preview: process.env.MONGO_URI ? 
+      `${process.env.MONGO_URI.substring(0, 20)}...` : 'NOT SET',
+    timestamp: new Date().toISOString()
+  })
 })
 
 // API routes
@@ -95,15 +132,44 @@ const connectDB = async () => {
     try {
       await connectDatabase()
       dbConnected = true
+      console.log('Database connection established')
     } catch (error) {
       console.error('Database connection failed:', error)
-      // Don't throw - let the request fail gracefully
+      // Reset flag to retry on next request
+      dbConnected = false
+      // Don't throw - let the request proceed (health check should work)
     }
   }
 }
 
 // Vercel serverless function handler
 export default async (req: any, res: any) => {
-  await connectDB()
+  // Log environment variable status on first request (for debugging)
+  if (!process.env._ENV_LOGGED) {
+    console.log('=== Environment Variables Check ===')
+    console.log('MONGO_URI exists:', !!process.env.MONGO_URI)
+    console.log('JWT_SECRET exists:', !!process.env.JWT_SECRET)
+    console.log('JWT_REFRESH_SECRET exists:', !!process.env.JWT_REFRESH_SECRET)
+    console.log('NODE_ENV:', process.env.NODE_ENV)
+    console.log('ADMIN_URL exists:', !!process.env.ADMIN_URL)
+    console.log('STOREFRONT_URL exists:', !!process.env.STOREFRONT_URL)
+    if (process.env.MONGO_URI) {
+      console.log('MONGO_URI starts with:', process.env.MONGO_URI.substring(0, 20))
+    }
+    console.log('===================================')
+    // Mark as logged to avoid spam
+    process.env._ENV_LOGGED = 'true'
+  }
+  
+  try {
+    // Connect to database (non-blocking - won't fail the request if DB is down)
+    await connectDB()
+  } catch (error) {
+    // Log error but don't block the request
+    // Health check should still work even if DB is down
+    console.error('Database connection warning:', error)
+  }
+  
+  // Handle the request
   return app(req, res)
 }

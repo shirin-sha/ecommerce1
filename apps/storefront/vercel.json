@@ -1,0 +1,13 @@
+{
+  "buildCommand": "cd ../.. && pnpm --filter storefront build",
+  "outputDirectory": "dist",
+  "devCommand": "cd ../.. && pnpm --filter storefront dev",
+  "installCommand": "cd ../.. && pnpm install",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
