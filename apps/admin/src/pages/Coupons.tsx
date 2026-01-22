@@ -7,7 +7,7 @@ import { formatCurrency } from '@ecommerce/shared'
 export default function Coupons() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [showAddForm, setShowAddForm] = useState(false)
+  const [showAddForm] = useState(false)
 
   const { data, isLoading } = useCoupons({
     page,

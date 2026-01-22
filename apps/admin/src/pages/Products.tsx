@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useProducts, useDeleteProduct } from '../hooks/useProducts'
-import { Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye } from 'lucide-react'
+import { Plus, Search, Filter, Edit, Trash2 } from 'lucide-react'
 import { Product } from '@ecommerce/shared'
 
 export default function Products() {

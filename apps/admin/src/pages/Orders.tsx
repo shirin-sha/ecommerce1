@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useOrders, useUpdateOrderStatus } from '../hooks/useOrders'
-import { Search, Filter, MoreVertical, Eye, Edit } from 'lucide-react'
+import { Search, Eye, Edit } from 'lucide-react'
 import { Order } from '@ecommerce/shared'
 import { formatCurrency } from '@ecommerce/shared'
 
 export default function Orders() {
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [search, setSearch] = useState('')
+  const [search] = useState('')
   const [dateFilter, setDateFilter] = useState('all')
 
   const { data, isLoading } = useOrders({
@@ -24,23 +24,6 @@ export default function Orders() {
     if (confirm(`Change order status to ${newStatus}?`)) {
       await updateStatus.mutateAsync({ id: orderId, status: newStatus })
     }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      pending_payment: 'bg-yellow-100 text-yellow-800',
-      processing: 'bg-blue-100 text-blue-800',
-      on_hold: 'bg-orange-100 text-orange-800',
-      completed: 'bg-green-100 text-green-800',
-      cancelled: 'bg-red-100 text-red-800',
-      refunded: 'bg-gray-100 text-gray-800',
-      failed: 'bg-red-100 text-red-800',
-    }
-    return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${colors[status] || colors.pending_payment}`}>
-        {status.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-      </span>
-    )
   }
 
   const statusCounts = {

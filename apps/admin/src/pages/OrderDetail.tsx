@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useOrder, useUpdateOrderStatus, useAddOrderNote } from '../hooks/useOrders'
-import { ArrowLeft, Save, Mail, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Save, Mail } from 'lucide-react'
 import { useState } from 'react'
 import { formatCurrency } from '@ecommerce/shared'
 

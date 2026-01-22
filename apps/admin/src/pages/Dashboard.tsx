@@ -1,7 +1,7 @@
 import { useOverviewAnalytics, useProductAnalytics, useStockAnalytics } from '../hooks/useAnalytics'
 import { useOrders } from '../hooks/useOrders'
 import { formatCurrency } from '@ecommerce/shared'
-import { TrendingUp, TrendingDown, ShoppingCart, DollarSign, Users, Package, ArrowUp, ArrowDown } from 'lucide-react'
+import { TrendingUp, ShoppingCart, DollarSign, Package, ArrowUp, ArrowDown } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
