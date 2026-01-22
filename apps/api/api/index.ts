@@ -44,6 +44,7 @@ const getAllowedOrigins = () => {
   
   const filtered = origins.filter(Boolean) as string[]
   console.log('Allowed CORS origins:', filtered)
+  console.log('ADMIN_URL from env:', process.env.ADMIN_URL)
   return filtered
 }
 
@@ -53,18 +54,37 @@ app.use(
   cors({
     origin: (origin, callback) => {
       const allowedOrigins = getAllowedOrigins()
+      
       // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin || allowedOrigins.length === 0) {
+      if (!origin) {
         return callback(null, true)
       }
+      
+      // If no allowed origins configured, allow all (for development)
+      if (allowedOrigins.length === 0) {
+        console.warn('⚠️ No CORS origins configured, allowing all origins')
+        return callback(null, true)
+      }
+      
+      // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
         callback(null, true)
       } else {
-        console.warn('CORS blocked origin:', origin)
-        callback(new Error('Not allowed by CORS'))
+        console.warn('❌ CORS blocked origin:', origin)
+        console.warn('   Allowed origins:', allowedOrigins)
+        // In production, be strict. In development, allow for debugging
+        if (process.env.NODE_ENV === 'production') {
+          callback(new Error('Not allowed by CORS'))
+        } else {
+          // In development, allow to help debug
+          console.warn('   Allowing in development mode')
+          callback(null, true)
+        }
       }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 )
 app.use(express.json())
