@@ -6,7 +6,7 @@ export default function SettingsGeneral() {
   const { data: settings, isLoading } = useSettings()
   const updateSettings = useUpdateGeneralSettings()
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit } = useForm({
     values: settings?.general,
   })
 

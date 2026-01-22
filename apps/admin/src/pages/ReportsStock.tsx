@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStockReport } from '../hooks/useReports'
-import { Download, AlertTriangle } from 'lucide-react'
+import { Download } from 'lucide-react'
 import { formatCurrency } from '@ecommerce/shared'
 
 export default function ReportsStock() {
