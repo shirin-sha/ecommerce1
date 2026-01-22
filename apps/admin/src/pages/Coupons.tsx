@@ -7,7 +7,6 @@ import { formatCurrency } from '@ecommerce/shared'
 export default function Coupons() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [showAddForm, setShowAddForm] = useState(false)
 
   const { data, isLoading } = useCoupons({
     page,
@@ -28,7 +27,7 @@ export default function Coupons() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Coupons</h1>
         <button
-          onClick={() => setShowAddForm(true)}
+          onClick={() => {/* TODO: Implement add coupon form */}}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
