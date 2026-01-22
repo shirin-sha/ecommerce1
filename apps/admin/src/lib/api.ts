@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
+// Use environment variable for API URL, fallback to relative path for local dev
+const API_URL = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin + '/api/v1' : '/api/v1')
 
 const api = axios.create({
   baseURL: API_URL,
