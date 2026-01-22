@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "echo 'No linting configured yet'",
     "seed": "tsx src/scripts/seed.ts",
-    "vercel-build": "echo 'Vercel will handle the build'"
+    "vercel-build": "cd ../.. && pnpm --filter @ecommerce/shared build",
+    "postinstall": "cd ../.. && pnpm --filter @ecommerce/shared build || true"
   },
   "dependencies": {
     "@ecommerce/shared": "workspace:*",

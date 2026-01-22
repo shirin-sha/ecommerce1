@@ -1,7 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "cd ../.. && pnpm --filter @ecommerce/shared build",
-  "installCommand": "cd ../.. && pnpm install",
   "builds": [
     {
       "src": "api/index.ts",
