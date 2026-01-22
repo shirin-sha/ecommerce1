@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm --filter admin build",
+  "buildCommand": "cd ../.. && pnpm --filter @ecommerce/shared build && pnpm --filter admin build",
   "outputDirectory": "dist",
   "devCommand": "cd ../.. && pnpm --filter admin dev",
   "installCommand": "cd ../.. && pnpm install",
