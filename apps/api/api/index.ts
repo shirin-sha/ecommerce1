@@ -144,32 +144,50 @@ const connectDB = async () => {
 
 // Vercel serverless function handler
 export default async (req: any, res: any) => {
-  // Log environment variable status on first request (for debugging)
-  if (!process.env._ENV_LOGGED) {
-    console.log('=== Environment Variables Check ===')
-    console.log('MONGO_URI exists:', !!process.env.MONGO_URI)
-    console.log('JWT_SECRET exists:', !!process.env.JWT_SECRET)
-    console.log('JWT_REFRESH_SECRET exists:', !!process.env.JWT_REFRESH_SECRET)
-    console.log('NODE_ENV:', process.env.NODE_ENV)
-    console.log('ADMIN_URL exists:', !!process.env.ADMIN_URL)
-    console.log('STOREFRONT_URL exists:', !!process.env.STOREFRONT_URL)
-    if (process.env.MONGO_URI) {
-      console.log('MONGO_URI starts with:', process.env.MONGO_URI.substring(0, 20))
-    }
-    console.log('===================================')
-    // Mark as logged to avoid spam
-    process.env._ENV_LOGGED = 'true'
-  }
-  
   try {
-    // Connect to database (non-blocking - won't fail the request if DB is down)
-    await connectDB()
-  } catch (error) {
-    // Log error but don't block the request
-    // Health check should still work even if DB is down
-    console.error('Database connection warning:', error)
+    // Log environment variable status on first request (for debugging)
+    if (!process.env._ENV_LOGGED) {
+      console.log('=== Environment Variables Check ===')
+      console.log('MONGO_URI exists:', !!process.env.MONGO_URI)
+      console.log('JWT_SECRET exists:', !!process.env.JWT_SECRET)
+      console.log('JWT_REFRESH_SECRET exists:', !!process.env.JWT_REFRESH_SECRET)
+      console.log('NODE_ENV:', process.env.NODE_ENV)
+      console.log('ADMIN_URL exists:', !!process.env.ADMIN_URL)
+      console.log('STOREFRONT_URL exists:', !!process.env.STOREFRONT_URL)
+      if (process.env.MONGO_URI) {
+        console.log('MONGO_URI starts with:', process.env.MONGO_URI.substring(0, 20))
+      }
+      console.log('===================================')
+      // Mark as logged to avoid spam
+      process.env._ENV_LOGGED = 'true'
+    }
+    
+    try {
+      // Connect to database (non-blocking - won't fail the request if DB is down)
+      await connectDB()
+    } catch (error) {
+      // Log error but don't block the request
+      // Health check should still work even if DB is down
+      console.error('Database connection warning:', error)
+    }
+    
+    // Handle the request
+    return app(req, res)
+  } catch (error: any) {
+    // Catch any unexpected errors and return a proper response
+    console.error('❌ Serverless function error:', error)
+    console.error('Error stack:', error?.stack)
+    
+    // Return error response instead of crashing
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'production' 
+          ? 'An error occurred' 
+          : error?.message || 'Unknown error',
+        ...(process.env.NODE_ENV !== 'production' && { stack: error?.stack })
+      })
+    }
   }
-  
-  // Handle the request
-  return app(req, res)
 }
