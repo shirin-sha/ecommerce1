@@ -1,7 +1,18 @@
 import axios from 'axios'
 
 // Use environment variable for API URL, fallback to relative path for local dev
-const API_URL = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin + '/api/v1' : '/api/v1')
+// Ensure API_URL always ends with /api/v1
+const getApiUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL
+  if (envUrl) {
+    // If VITE_API_URL is set, ensure it ends with /api/v1
+    return envUrl.endsWith('/api/v1') ? envUrl : `${envUrl.replace(/\/$/, '')}/api/v1`
+  }
+  // Fallback for local dev
+  return typeof window !== 'undefined' ? window.location.origin + '/api/v1' : '/api/v1'
+}
+
+const API_URL = getApiUrl()
 
 const api = axios.create({
   baseURL: API_URL,
