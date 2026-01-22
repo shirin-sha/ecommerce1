@@ -43,8 +43,10 @@ const getAllowedOrigins = () => {
   }
   
   const filtered = origins.filter(Boolean) as string[]
-  console.log('Allowed CORS origins:', filtered)
-  console.log('ADMIN_URL from env:', process.env.ADMIN_URL)
+  // Log CORS origins in development for debugging
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Allowed CORS origins:', filtered)
+  }
   return filtered
 }
 
@@ -60,9 +62,14 @@ app.use(
         return callback(null, true)
       }
       
-      // If no allowed origins configured, allow all (for development)
+      // If no allowed origins configured, reject in production
       if (allowedOrigins.length === 0) {
-        console.warn('⚠️ No CORS origins configured, allowing all origins')
+        if (process.env.NODE_ENV === 'production') {
+          console.error('❌ No CORS origins configured in production!')
+          return callback(new Error('CORS not configured'))
+        }
+        // Allow in development only
+        console.warn('⚠️ No CORS origins configured, allowing all origins (development only)')
         return callback(null, true)
       }
       
@@ -70,16 +77,12 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         callback(null, true)
       } else {
-        console.warn('❌ CORS blocked origin:', origin)
-        console.warn('   Allowed origins:', allowedOrigins)
-        // In production, be strict. In development, allow for debugging
-        if (process.env.NODE_ENV === 'production') {
-          callback(new Error('Not allowed by CORS'))
-        } else {
-          // In development, allow to help debug
-          console.warn('   Allowing in development mode')
-          callback(null, true)
+        // Log blocked origin for debugging
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('❌ CORS blocked origin:', origin)
+          console.warn('   Allowed origins:', allowedOrigins)
         }
+        callback(new Error('Not allowed by CORS'))
       }
     },
     credentials: true,
@@ -96,22 +99,24 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Debug endpoint to check environment variables (remove in production if needed)
-app.get('/debug/env', (req, res) => {
-  // Don't expose sensitive values, just check if they exist
-  res.json({
-    hasMONGO_URI: !!process.env.MONGO_URI,
-    hasJWT_SECRET: !!process.env.JWT_SECRET,
-    hasJWT_REFRESH_SECRET: !!process.env.JWT_REFRESH_SECRET,
-    NODE_ENV: process.env.NODE_ENV,
-    hasADMIN_URL: !!process.env.ADMIN_URL,
-    hasSTOREFRONT_URL: !!process.env.STOREFRONT_URL,
-    // Show first few chars of MONGO_URI for debugging (safe)
-    MONGO_URI_preview: process.env.MONGO_URI ? 
-      `${process.env.MONGO_URI.substring(0, 20)}...` : 'NOT SET',
-    timestamp: new Date().toISOString()
+// Debug endpoint to check environment variables (development only)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/debug/env', (req, res) => {
+    // Don't expose sensitive values, just check if they exist
+    res.json({
+      hasMONGO_URI: !!process.env.MONGO_URI,
+      hasJWT_SECRET: !!process.env.JWT_SECRET,
+      hasJWT_REFRESH_SECRET: !!process.env.JWT_REFRESH_SECRET,
+      NODE_ENV: process.env.NODE_ENV,
+      hasADMIN_URL: !!process.env.ADMIN_URL,
+      hasSTOREFRONT_URL: !!process.env.STOREFRONT_URL,
+      // Show first few chars of MONGO_URI for debugging (safe)
+      MONGO_URI_preview: process.env.MONGO_URI ? 
+        `${process.env.MONGO_URI.substring(0, 20)}...` : 'NOT SET',
+      timestamp: new Date().toISOString()
+    })
   })
-})
+}
 
 // API routes
 app.get('/api/v1', (req, res) => {
@@ -165,8 +170,8 @@ const connectDB = async () => {
 // Vercel serverless function handler
 export default async (req: any, res: any) => {
   try {
-    // Log environment variable status on first request (for debugging)
-    if (!process.env._ENV_LOGGED) {
+    // Log environment variable status on first request (development only)
+    if (!process.env._ENV_LOGGED && process.env.NODE_ENV !== 'production') {
       console.log('=== Environment Variables Check ===')
       console.log('MONGO_URI exists:', !!process.env.MONGO_URI)
       console.log('JWT_SECRET exists:', !!process.env.JWT_SECRET)
@@ -174,11 +179,7 @@ export default async (req: any, res: any) => {
       console.log('NODE_ENV:', process.env.NODE_ENV)
       console.log('ADMIN_URL exists:', !!process.env.ADMIN_URL)
       console.log('STOREFRONT_URL exists:', !!process.env.STOREFRONT_URL)
-      if (process.env.MONGO_URI) {
-        console.log('MONGO_URI starts with:', process.env.MONGO_URI.substring(0, 20))
-      }
       console.log('===================================')
-      // Mark as logged to avoid spam
       process.env._ENV_LOGGED = 'true'
     }
     
@@ -196,7 +197,9 @@ export default async (req: any, res: any) => {
   } catch (error: any) {
     // Catch any unexpected errors and return a proper response
     console.error('❌ Serverless function error:', error)
-    console.error('Error stack:', error?.stack)
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('Error stack:', error?.stack)
+    }
     
     // Return error response instead of crashing
     if (!res.headersSent) {
