@@ -18,6 +18,7 @@ export interface IProduct extends Document {
   type: ProductType
   sku?: string
   barcode?: string
+  soldIndividually?: boolean
   manageStock: boolean
   stockQty?: number
   stockStatus: StockStatus
@@ -59,8 +60,9 @@ const productSchema = new Schema<IProduct>(
     },
     slug: {
       type: String,
-      required: true,
+      required: false, // Will be auto-generated from title if not provided
       unique: true,
+      sparse: true, // Allow multiple null values for uniqueness
       lowercase: true,
       trim: true,
       index: true,
@@ -111,6 +113,10 @@ const productSchema = new Schema<IProduct>(
       index: true,
     },
     barcode: String,
+    soldIndividually: {
+      type: Boolean,
+      default: false,
+    },
     manageStock: {
       type: Boolean,
       default: false,
@@ -200,15 +206,28 @@ productSchema.index({ createdAt: -1 })
 
 // Auto-generate slug from title if not provided
 productSchema.pre('save', async function (next) {
-  if (!this.slug && this.title) {
+  // Always ensure slug exists - generate from title if missing
+  if (!this.slug || this.slug.trim() === '') {
+    if (!this.title || this.title.trim() === '') {
+      return next(new Error('Product title is required to generate slug'))
+    }
     const { slugify } = await import('@ecommerce/shared')
     this.slug = slugify(this.title)
+  }
+  
+  // Ensure uniqueness
+  if (this.isNew || this.isModified('slug')) {
+    let uniqueSlug = this.slug
+    let counter = 1
+    let exists = await mongoose.models.Product?.countDocuments({ slug: uniqueSlug, _id: { $ne: this._id } })
     
-    // Ensure uniqueness
-    const count = await mongoose.models.Product?.countDocuments({ slug: this.slug, _id: { $ne: this._id } })
-    if (count && count > 0) {
-      this.slug = `${this.slug}-${Date.now()}`
+    while (exists && exists > 0) {
+      uniqueSlug = `${this.slug}-${counter}`
+      exists = await mongoose.models.Product?.countDocuments({ slug: uniqueSlug, _id: { $ne: this._id } })
+      counter++
     }
+    
+    this.slug = uniqueSlug
   }
 
   // Set publishedAt when status changes to published

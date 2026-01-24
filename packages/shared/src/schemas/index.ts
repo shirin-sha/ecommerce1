@@ -55,6 +55,8 @@ export const createProductSchema = z.object({
   featured: z.boolean().default(false),
   shortDescription: z.string().optional(),
   description: z.string().optional(),
+  featuredImage: z.string().url().optional(),
+  gallery: z.array(z.string().url()).optional().default([]),
   regularPrice: z.number().min(0, 'Price must be positive'),
   salePrice: z.number().min(0).optional(),
   saleStart: z.string().datetime().optional(),
@@ -62,6 +64,7 @@ export const createProductSchema = z.object({
   type: z.enum(['simple', 'variable']).default('simple'),
   sku: z.string().optional(),
   barcode: z.string().optional(),
+  soldIndividually: z.boolean().default(false),
   manageStock: z.boolean().default(false),
   stockQty: z.number().int().min(0).optional(),
   stockStatus: z.enum(['in_stock', 'out_of_stock', 'backorder']).default('in_stock'),
@@ -69,14 +72,27 @@ export const createProductSchema = z.object({
   weight: z.number().min(0).optional(),
   dimensions: z
     .object({
-      length: z.number().min(0),
-      width: z.number().min(0),
-      height: z.number().min(0),
+      length: z.number().min(0).optional(),
+      width: z.number().min(0).optional(),
+      height: z.number().min(0).optional(),
     })
     .optional(),
   shippingClass: z.string().optional(),
   categoryIds: z.array(z.string()).default([]),
   tagIds: z.array(z.string()).default([]),
+  attributes: z
+    .array(
+      z.object({
+        attributeId: z.string(),
+        name: z.string(),
+        values: z.array(z.string()),
+        usedForVariations: z.boolean().default(false),
+        visibleOnProductPage: z.boolean().default(true),
+        position: z.number().int().default(0),
+      })
+    )
+    .optional()
+    .default([]),
   metaTitle: z.string().optional(),
   metaDescription: z.string().optional(),
 })

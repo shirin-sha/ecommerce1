@@ -171,6 +171,25 @@ export const getProductBySlug = asyncHandler(async (req: AuthRequest, res: Respo
 export const createProduct = asyncHandler(async (req: AuthRequest, res: Response) => {
   const productData = req.body
 
+  // Auto-generate slug from title if not provided
+  if (!productData.slug && productData.title) {
+    const { slugify } = await import('@ecommerce/shared')
+    let baseSlug = slugify(productData.title)
+    
+    // Ensure uniqueness
+    let uniqueSlug = baseSlug
+    let counter = 1
+    let exists = await Product.countDocuments({ slug: uniqueSlug })
+    
+    while (exists > 0) {
+      uniqueSlug = `${baseSlug}-${counter}`
+      exists = await Product.countDocuments({ slug: uniqueSlug })
+      counter++
+    }
+    
+    productData.slug = uniqueSlug
+  }
+
   // Validate categories exist
   if (productData.categoryIds && productData.categoryIds.length > 0) {
     const categories = await Category.find({ _id: { $in: productData.categoryIds } })

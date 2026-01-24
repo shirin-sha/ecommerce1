@@ -22,12 +22,22 @@ const api = axios.create({
   },
 })
 
-// Add auth token to requests
+// Add auth token to requests and handle FormData
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  
+  // If data is FormData, remove Content-Type header so axios can set it with boundary automatically
+  if (config.data instanceof FormData) {
+    // Delete from headers object (axios uses this)
+    delete config.headers['Content-Type']
+    delete config.headers['content-type']
+    // Also ensure transformRequest doesn't interfere
+    config.transformRequest = [(data) => data]
+  }
+  
   return config
 })
 

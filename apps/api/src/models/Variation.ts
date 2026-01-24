@@ -4,6 +4,7 @@ import { StockStatus } from '@ecommerce/shared'
 export interface IVariation extends Document {
   productId: mongoose.Types.ObjectId
   sku?: string
+  barcode?: string
   image?: string
   regularPrice: number
   salePrice?: number
@@ -17,6 +18,8 @@ export interface IVariation extends Document {
     width: number
     height: number
   }
+  shippingClass?: string
+  description?: string
   attributeSelections: Record<string, string>
   status: 'active' | 'inactive'
   createdAt: Date
@@ -37,6 +40,7 @@ const variationSchema = new Schema<IVariation>(
       sparse: true,
       index: true,
     },
+    barcode: String,
     image: String,
     regularPrice: {
       type: Number,
@@ -67,6 +71,8 @@ const variationSchema = new Schema<IVariation>(
       width: { type: Number, min: 0 },
       height: { type: Number, min: 0 },
     },
+    shippingClass: String,
+    description: String,
     attributeSelections: {
       type: Map,
       of: String,

@@ -20,6 +20,7 @@ import reviewRoutes from './routes/reviews'
 import settingsRoutes from './routes/settings'
 import analyticsRoutes from './routes/analytics'
 import reportsRoutes from './routes/reports'
+import uploadsRoutes from './routes/uploads'
 
 // Load environment variables from project root
 // Go up two levels from apps/api to project root
@@ -29,7 +30,13 @@ const app = express()
 const PORT = process.env.PORT || 5000
 
 // Middleware
-app.use(helmet())
+// Allow the Admin app (http://localhost:3001) to embed images served by the API (http://localhost:5000/uploads/*).
+// Without this, browsers block <img> due to Cross-Origin-Resource-Policy: same-origin.
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+)
 app.use(
   cors({
     origin: [process.env.FRONTEND_URL || 'http://localhost:3000', process.env.ADMIN_URL || 'http://localhost:3001'],
@@ -39,6 +46,9 @@ app.use(
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')))
 
 // Health check
 app.get('/health', (req, res) => {
@@ -68,6 +78,7 @@ app.use('/api/v1/reviews', reviewRoutes)
 app.use('/api/v1/settings', settingsRoutes)
 app.use('/api/v1/analytics', analyticsRoutes)
 app.use('/api/v1/reports', reportsRoutes)
+app.use('/api/v1/uploads', uploadsRoutes)
 
 // Error handler (must be last)
 app.use(errorHandler)

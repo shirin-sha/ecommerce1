@@ -59,6 +59,7 @@ export interface Product {
   type: ProductType
   sku?: string
   barcode?: string
+  soldIndividually?: boolean
   manageStock: boolean
   stockQty?: number
   stockStatus: StockStatus
@@ -96,6 +97,7 @@ export interface Variation {
   _id: string
   productId: string
   sku?: string
+  barcode?: string
   image?: string
   regularPrice: number
   salePrice?: number
@@ -109,6 +111,8 @@ export interface Variation {
     width: number
     height: number
   }
+  shippingClass?: string
+  description?: string
   attributeSelections: Record<string, string>
   status: 'active' | 'inactive'
   createdAt: Date

@@ -1,7 +1,6 @@
 import { Response } from 'express'
 import { Product } from '../models/Product'
 import { Variation } from '../models/Variation'
-import { AttributeTerm } from '../models/AttributeTerm'
 import { AppError, asyncHandler } from '../middleware/errorHandler'
 import { AuthRequest } from '../middleware/auth'
 
@@ -54,20 +53,6 @@ export const generateVariations = asyncHandler(async (req: AuthRequest, res: Res
     throw new AppError('No attributes configured for variations', 400)
   }
 
-  // Get all attribute terms
-  const attributeIds = variationAttributes.map((attr) => attr.attributeId)
-  const allTerms = await AttributeTerm.find({ attributeId: { $in: attributeIds } })
-
-  // Group terms by attribute
-  const termsByAttribute: Record<string, any[]> = {}
-  for (const term of allTerms) {
-    const attrId = term.attributeId.toString()
-    if (!termsByAttribute[attrId]) {
-      termsByAttribute[attrId] = []
-    }
-    termsByAttribute[attrId].push(term)
-  }
-
   // Generate all combinations
   const combinations: Record<string, string>[] = []
 
@@ -78,16 +63,19 @@ export const generateVariations = asyncHandler(async (req: AuthRequest, res: Res
     }
 
     const attr = remainingAttrs[index]
-    const attrId = attr.attributeId.toString()
-    const terms = termsByAttribute[attrId] || []
+    const values: string[] = Array.isArray(attr.values) ? attr.values : []
 
-    for (const term of terms) {
-      current[attr.name] = term.name
+    for (const value of values) {
+      current[attr.name] = value
       generateCombinations(current, remainingAttrs, index + 1)
     }
   }
 
   generateCombinations({}, variationAttributes, 0)
+
+  if (combinations.length === 0) {
+    throw new AppError('No variation values found. Add attribute values (e.g., Small/Medium/Large) before generating variations.', 400)
+  }
 
   // Delete existing variations
   await Variation.deleteMany({ productId: id })
