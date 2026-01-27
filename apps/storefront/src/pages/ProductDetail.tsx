@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useProduct } from '../hooks/useProducts'
 import { useCart } from '../context/CartContext'
@@ -6,6 +7,32 @@ export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>()
   const { data: product, isLoading } = useProduct(slug || '', 'slug')
   const { addToCart } = useCart()
+  
+  // Helper function to get full image URL
+  const getImageUrl = (imagePath?: string): string | undefined => {
+    if (!imagePath) return undefined
+    // If it's already a full URL (http/https), return as is
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath
+    }
+    // If it's a relative path, prepend API base URL
+    if (imagePath.startsWith('/')) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+      const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
+      return baseUrl + imagePath
+    }
+    return imagePath
+  }
+
+  // Get all images: featured image + gallery images
+  const allImages = product 
+    ? [
+        product.featuredImage && getImageUrl(product.featuredImage),
+        ...(product.gallery || []).map(img => getImageUrl(img))
+      ].filter(Boolean) as string[]
+    : []
+  
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0)
 
   const handleAddToCart = () => {
     if (product) {
@@ -36,14 +63,18 @@ export default function ProductDetail() {
     )
   }
 
+  const currentImage = allImages[selectedImageIndex] || getImageUrl(product?.featuredImage)
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+        {/* Image Gallery */}
         <div>
-          <div className="bg-gray-200 rounded-lg h-96 mb-4 overflow-hidden">
-            {product.featuredImage ? (
+          {/* Main Image */}
+          <div className="bg-gray-200 rounded-lg h-96 mb-4 overflow-hidden relative group">
+            {currentImage ? (
               <img
-                src={product.featuredImage}
+                src={currentImage}
                 alt={product.title}
                 className="w-full h-full object-cover"
               />
@@ -53,13 +84,35 @@ export default function ProductDetail() {
               </div>
             )}
           </div>
-          {product.gallery && product.gallery.length > 0 && (
+          
+          {/* Thumbnail Gallery */}
+          {allImages.length > 1 && (
             <div className="grid grid-cols-4 gap-4">
-              {product.gallery.map((image: string, index: number) => (
-                <div key={index} className="bg-gray-200 rounded-lg h-24 overflow-hidden">
-                  <img src={image} alt={`${product.title} ${index + 1}`} className="w-full h-full object-cover" />
-                </div>
+              {allImages.map((image: string, index: number) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => setSelectedImageIndex(index)}
+                  className={`bg-gray-200 rounded-lg h-24 overflow-hidden border-2 transition-all ${
+                    selectedImageIndex === index
+                      ? 'border-blue-600 ring-2 ring-blue-300'
+                      : 'border-transparent hover:border-gray-400'
+                  }`}
+                >
+                  <img
+                    src={image}
+                    alt={`${product.title} ${index + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
               ))}
+            </div>
+          )}
+          
+          {/* Single image indicator */}
+          {allImages.length === 0 && (
+            <div className="text-center text-sm text-gray-500 py-4">
+              No images available
             </div>
           )}
         </div>

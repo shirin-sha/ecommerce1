@@ -4,8 +4,9 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useProduct, useCreateProduct, useUpdateProduct } from '../hooks/useProducts'
 import { useAttributes, useAttributeTerms } from '../hooks/useAttributes'
 import { createProductSchema, CreateProductInput, Product, Variation } from '@ecommerce/shared'
-import { Save, Eye, Info, Plus, X, Trash2 } from 'lucide-react'
-import { useEffect, useState, useRef } from 'react'
+import { Save, Eye, Info, Plus, X, Trash2, Upload, Image as ImageIcon, ArrowLeft, ArrowRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import api from '../lib/api'
 import {
   useCreateVariation,
   useDeleteVariation,
@@ -13,36 +14,349 @@ import {
   useUpdateVariation,
   useVariations,
 } from '../hooks/useVariations'
-import axios from 'axios'
 
-// Create a separate axios instance for file uploads (without default Content-Type)
-// Use the same baseURL logic as the main api instance
-const getUploadApiUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL
-  if (envUrl) {
-    return envUrl.endsWith('/api/v1') ? envUrl : `${envUrl.replace(/\/$/, '')}/api/v1`
-  }
-  return typeof window !== 'undefined' ? window.location.origin + '/api/v1' : '/api/v1'
+// Product Image Upload Component
+interface ProductImageUploadProps {
+  currentImage?: string
+  onImageUploaded: (url: string) => void
+  onImageRemoved: () => void
 }
 
-const uploadApi = axios.create({
-  baseURL: getUploadApiUrl(),
-  withCredentials: true,
-  // Don't set Content-Type - let axios set it automatically for FormData
-})
-uploadApi.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+function ProductImageUpload({ currentImage, onImageUploaded, onImageRemoved }: ProductImageUploadProps) {
+  const [uploading, setUploading] = useState(false)
+  const [preview, setPreview] = useState<string | null>(currentImage || null)
+
+  useEffect(() => {
+    setPreview(currentImage || null)
+  }, [currentImage])
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB')
+      return
+    }
+
+    // Show preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+
+    // Upload file
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const response = await api.post('/products/upload-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      if (response.data.success && response.data.data?.url) {
+        // Get full URL - if it's a relative path, prepend API base URL
+        let imageUrl = response.data.data.url
+        if (imageUrl.startsWith('/')) {
+          // Get API base URL (without /api/v1)
+          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+          const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
+          // Construct full URL pointing to API server
+          imageUrl = baseUrl + imageUrl
+        }
+        onImageUploaded(imageUrl)
+      } else {
+        throw new Error('Upload failed')
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error)
+      alert(error?.response?.data?.error || 'Failed to upload image')
+      setPreview(currentImage || null)
+    } finally {
+      setUploading(false)
+      // Reset file input
+      if (e.target) {
+        e.target.value = ''
+      }
+    }
   }
-  // Ensure FormData is not transformed
-  if (config.data instanceof FormData) {
-    // Don't set Content-Type - axios will set it with boundary
-    delete config.headers['Content-Type']
-    delete config.headers['content-type']
+
+  const handleRemove = () => {
+    setPreview(null)
+    onImageRemoved()
   }
-  return config
-})
+
+  return (
+    <div className="space-y-4">
+      {preview ? (
+        <div className="relative inline-block">
+          <img
+            src={preview}
+            alt="Product preview"
+            className="w-32 h-32 object-cover rounded-lg border border-gray-300"
+          />
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+            title="Remove image"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+          <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+          <p className="text-sm text-gray-600 mb-3">No image uploaded</p>
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">
+            <Upload className="w-4 h-4" />
+            {uploading ? 'Uploading...' : 'Upload Image'}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+      )}
+
+      {preview && (
+        <div>
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 cursor-pointer">
+            <Upload className="w-4 h-4" />
+            {uploading ? 'Uploading...' : 'Change Image'}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Product Gallery Upload Component (Multiple Images)
+interface ProductGalleryUploadProps {
+  images: string[]
+  onImagesChange: (images: string[]) => void
+}
+
+function ProductGalleryUpload({ images, onImagesChange }: ProductGalleryUploadProps) {
+  const [uploading, setUploading] = useState(false)
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, insertIndex?: number) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const filesArray = Array.from(files)
+    
+    // Validate all files
+    for (const file of filesArray) {
+      if (!file.type.startsWith('image/')) {
+        alert(`File "${file.name}" is not an image file`)
+        return
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`Image "${file.name}" size must be less than 5MB`)
+        return
+      }
+    }
+
+    setUploading(true)
+    const uploadedUrls: string[] = []
+    let hasError = false
+
+    try {
+      // Upload files sequentially
+      for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i]
+        setUploadingIndex(i)
+
+        const formData = new FormData()
+        formData.append('image', file)
+
+        try {
+          const response = await api.post('/products/upload-image', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          })
+
+          if (response.data.success && response.data.data?.url) {
+            let imageUrl = response.data.data.url
+            if (imageUrl.startsWith('/')) {
+              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+              const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
+              imageUrl = baseUrl + imageUrl
+            }
+            uploadedUrls.push(imageUrl)
+          } else {
+            throw new Error('Upload failed')
+          }
+        } catch (error: any) {
+          console.error('Upload error:', error)
+          alert(`Failed to upload "${file.name}": ${error?.response?.data?.error || 'Upload failed'}`)
+          hasError = true
+          break
+        }
+      }
+
+      if (!hasError && uploadedUrls.length > 0) {
+        // Insert new images at the specified index or append to the end
+        const newImages = [...images]
+        if (insertIndex !== undefined && insertIndex >= 0) {
+          newImages.splice(insertIndex, 0, ...uploadedUrls)
+        } else {
+          newImages.push(...uploadedUrls)
+        }
+        onImagesChange(newImages)
+      }
+    } finally {
+      setUploading(false)
+      setUploadingIndex(null)
+      // Reset file input
+      if (e.target) {
+        e.target.value = ''
+      }
+    }
+  }
+
+  const handleRemove = (index: number) => {
+    const newImages = images.filter((_, i) => i !== index)
+    onImagesChange(newImages)
+  }
+
+  const handleReorder = (fromIndex: number, toIndex: number) => {
+    const newImages = [...images]
+    const [removed] = newImages.splice(fromIndex, 1)
+    newImages.splice(toIndex, 0, removed)
+    onImagesChange(newImages)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-gray-600">
+          Add multiple images to create a product gallery.
+        </p>
+        <label className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer w-full">
+          <Upload className="w-4 h-4" />
+          {uploading ? 'Uploading...' : 'Add Images'}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => handleFileSelect(e)}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+      </div>
+
+      {images.length === 0 ? (
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+          <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+          <p className="text-sm text-gray-600 mb-3">No gallery images uploaded</p>
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">
+            <Upload className="w-4 h-4" />
+            {uploading ? 'Uploading...' : 'Upload Images'}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => handleFileSelect(e)}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {images.map((imageUrl, index) => (
+            <div key={index} className="relative group">
+              <div className="relative aspect-square rounded-lg border border-gray-300 overflow-hidden bg-gray-100">
+                <img
+                  src={imageUrl}
+                  alt={`Gallery image ${index + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                {uploading && uploadingIndex === index && (
+                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <div className="text-white text-sm">Uploading...</div>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-opacity flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(index)}
+                    className="opacity-0 group-hover:opacity-100 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 transition-opacity"
+                    title="Remove image"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleReorder(index, index - 1)}
+                      className="opacity-0 group-hover:opacity-100 bg-blue-600 text-white rounded-full p-2 hover:bg-blue-700 transition-opacity"
+                      title="Move left"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                  )}
+                  {index < images.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleReorder(index, index + 1)}
+                      className="opacity-0 group-hover:opacity-100 bg-blue-600 text-white rounded-full p-2 hover:bg-blue-700 transition-opacity"
+                      title="Move right"
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 text-xs text-gray-500 text-center">Image {index + 1}</div>
+            </div>
+          ))}
+          {/* Add more button */}
+          <label className="relative aspect-square rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
+            <div className="text-center">
+              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-xs text-gray-600">Add More</p>
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => handleFileSelect(e, images.length)}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Product Attributes Tab Component
 interface ProductAttributesTabProps {
@@ -853,12 +1167,6 @@ export default function ProductEdit() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const isNew = !id
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const galleryInputRef = useRef<HTMLInputElement>(null)
-  const [featuredImageFile, setFeaturedImageFile] = useState<File | null>(null)
-  const [featuredImagePreview, setFeaturedImagePreview] = useState<string | null>(null)
-  const [galleryFiles, setGalleryFiles] = useState<File[]>([])
-  const [galleryPreviews, setGalleryPreviews] = useState<string[]>([])
 
   const { data: product, isLoading } = useProduct(id || '')
   const createProduct = useCreateProduct()
@@ -936,11 +1244,6 @@ export default function ProductEdit() {
   useEffect(() => {
     if (product && !isNew) {
       reset(getDefaultValues())
-      // Reset file states when loading existing product
-      setFeaturedImageFile(null)
-      setFeaturedImagePreview(null)
-      setGalleryFiles([])
-      setGalleryPreviews([])
     }
   }, [product, isNew, reset])
 
@@ -995,6 +1298,7 @@ export default function ProductEdit() {
   }, [productType, activeTab])
 
   const onSubmit = async (data: CreateProductInput, opts?: { stay?: boolean; nextTab?: ProductDataTab }) => {
+    console.log('onSubmit called with data:', { title: data.title, type: data.type, regularPrice: data.regularPrice })
     try {
       // Clean up dimensions object - if all fields are undefined, set dimensions to undefined
       // Otherwise, keep only the fields that have values
@@ -1017,70 +1321,82 @@ export default function ProductEdit() {
         }
       }
 
-      // Upload featured image if a new file was selected
-      if (featuredImageFile && featuredImageFile instanceof File) {
-        try {
-          const form = new FormData()
-          form.append('file', featuredImageFile)
-          console.log('Uploading featured image:', featuredImageFile.name, featuredImageFile.size, featuredImageFile.type)
-          const { data: uploadData } = await uploadApi.post('/uploads/image', form)
-          console.log('Upload successful:', uploadData)
-          data.featuredImage = uploadData.data.url
-        } catch (err: any) {
-          console.error('Image upload error:', err)
-          console.error('Error response:', err?.response?.data)
-          alert(`Failed to upload featured image: ${err?.response?.data?.error || err?.message || 'Upload failed'}`)
-          return
-        }
+      // Ensure required fields are present
+      if (!data.title || data.title.trim() === '') {
+        alert('Product name is required')
+        setFocus('title')
+        return
       }
 
-      // Upload gallery images if new files were selected
-      if (galleryFiles.length > 0) {
-        const uploadedGalleryUrls: string[] = []
-        try {
-          for (const file of galleryFiles) {
-            const form = new FormData()
-            form.append('file', file)
-            const { data: uploadData } = await uploadApi.post('/uploads/image', form)
-            uploadedGalleryUrls.push(uploadData.data.url)
-          }
-          // Merge with existing gallery URLs
-          data.gallery = [...(data.gallery || []), ...uploadedGalleryUrls]
-        } catch (err: any) {
-          alert(`Failed to upload gallery images: ${err?.response?.data?.error || err?.message || 'Upload failed'}`)
-          return
-        }
+      if (!data.regularPrice || data.regularPrice <= 0) {
+        alert('Regular price must be greater than 0')
+        return
       }
+
+      // Log the data being sent for debugging
+      console.log('Saving product with data:', {
+        isNew,
+        title: data.title,
+        type: data.type,
+        regularPrice: data.regularPrice,
+        attributes: data.attributes,
+        dimensions: data.dimensions,
+      })
 
       if (isNew) {
-        const result: any = await createProduct.mutateAsync(data)
-        const newId: string | undefined = result?.data?._id
-        // Clear file states after successful save
-        setFeaturedImageFile(null)
-        setFeaturedImagePreview(null)
-        setGalleryFiles([])
-        setGalleryPreviews([])
-        if (opts?.stay && newId) {
-          const next = opts?.nextTab ? `?tab=${opts.nextTab}` : ''
-          navigate(`/products/${newId}/edit${next}`)
-          return
+        try {
+          const result: any = await createProduct.mutateAsync(data)
+          console.log('Product created successfully:', result)
+          const newId: string | undefined = result?.data?._id || result?.data?.product?._id
+          
+          if (!newId) {
+            console.error('No product ID returned from API:', result)
+            alert('Product was created but no ID was returned. Please check the product list.')
+            return
+          }
+          
+          if (opts?.stay && newId) {
+            const next = opts?.nextTab ? `?tab=${opts.nextTab}` : ''
+            navigate(`/products/${newId}/edit${next}`)
+            return
+          }
+          navigate('/products')
+        } catch (createError: any) {
+          console.error('Error creating product:', createError)
+          const errorMessage = createError?.response?.data?.error || 
+                              createError?.response?.data?.details || 
+                              createError?.message || 
+                              'Failed to create product'
+          alert(`Failed to create product: ${errorMessage}`)
+          throw createError // Re-throw to be caught by outer catch
         }
-        navigate('/products')
       } else {
-        await updateProduct.mutateAsync({ id: id!, ...data })
-        // Clear file states after successful save
-        setFeaturedImageFile(null)
-        setFeaturedImagePreview(null)
-        setGalleryFiles([])
-        setGalleryPreviews([])
-        if (opts?.stay) {
-          if (opts?.nextTab) setTab(opts.nextTab)
-          return
+        try {
+          await updateProduct.mutateAsync({ id: id!, ...data })
+          console.log('Product updated successfully')
+          
+          if (opts?.stay) {
+            if (opts?.nextTab) setTab(opts.nextTab)
+            return
+          }
+          navigate('/products')
+        } catch (updateError: any) {
+          console.error('Error updating product:', updateError)
+          const errorMessage = updateError?.response?.data?.error || 
+                              updateError?.response?.data?.details || 
+                              updateError?.message || 
+                              'Failed to update product'
+          alert(`Failed to update product: ${errorMessage}`)
+          throw updateError // Re-throw to be caught by outer catch
         }
-        navigate('/products')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving product:', error)
+      // Only show alert if it wasn't already shown in the inner catch blocks
+      if (!error?.response) {
+        const errorMessage = error?.message || 'An unexpected error occurred while saving the product'
+        alert(`Error: ${errorMessage}`)
+      }
     }
   }
 
@@ -1110,32 +1426,45 @@ export default function ProductEdit() {
     }
   }
 
-  const saveAndExit = () => handleSubmit((data) => onSubmit(data), onInvalid)()
-  const saveAndStay = (nextTab?: ProductDataTab) =>
-    handleSubmit((data) => onSubmit(data, { stay: true, nextTab }), onInvalid)()
+  const saveAndStay = (nextTab?: ProductDataTab) => {
+    console.log('saveAndStay called with tab:', nextTab)
+    handleSubmit(
+      (data) => {
+        console.log('Form validation passed, calling onSubmit with stay=true')
+        onSubmit(data, { stay: true, nextTab })
+      },
+      (errors) => {
+        console.log('Form validation failed:', errors)
+        onInvalid(errors)
+      }
+    )()
+  }
 
   if (!isNew && isLoading) {
     return <div className="p-8">Loading product...</div>
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">{isNew ? 'Add New Product' : 'Edit Product'}</h1>
-        <div className="flex gap-2">
-          <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2">
-            <Eye className="w-4 h-4" />
-            Preview
-          </button>
-          <button
-            onClick={saveAndExit}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Save className="w-4 h-4" />
-            {isNew ? 'Publish' : 'Update'}
-          </button>
+    <form onSubmit={handleSubmit((data) => onSubmit(data), onInvalid)}>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">{isNew ? 'Add New Product' : 'Edit Product'}</h1>
+          <div className="flex gap-2">
+            <button 
+              type="button"
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+            >
+              <Eye className="w-4 h-4" />
+              Preview
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              {isNew ? 'Publish' : 'Update'}
+            </button>
+          </div>
         </div>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -1614,6 +1943,27 @@ export default function ProductEdit() {
             </div>
           </div>
 
+          {/* Product Image */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="font-semibold mb-4">Product Image</h3>
+            <ProductImageUpload
+              currentImage={watch('featuredImage')}
+              onImageUploaded={(url) => setValue('featuredImage', url, { shouldValidate: true })}
+              onImageRemoved={() => setValue('featuredImage', undefined, { shouldValidate: true })}
+            />
+            {errors.featuredImage && <p className="text-red-600 text-sm mt-1">{errors.featuredImage.message}</p>}
+          </div>
+
+          {/* Product Gallery (Multiple Images) */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="font-semibold mb-4">Product Gallery</h3>
+            <ProductGalleryUpload
+              images={watch('gallery') || []}
+              onImagesChange={(images) => setValue('gallery', images, { shouldValidate: true })}
+            />
+            {errors.gallery && <p className="text-red-600 text-sm mt-1">{errors.gallery.message}</p>}
+          </div>
+
           {/* Product Categories */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-semibold mb-4">Product Categories</h3>
@@ -1632,222 +1982,8 @@ export default function ProductEdit() {
             <p className="text-xs text-gray-500 mt-2">Separate tags with commas</p>
           </div>
 
-          {/* Product Image */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="font-semibold mb-4">Product Image</h3>
-            <div className="space-y-3">
-              {featuredImagePreview || watch('featuredImage') ? (
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <img
-                    src={featuredImagePreview || watch('featuredImage')}
-                    alt="Product"
-                    className="w-full h-48 object-cover"
-                  />
-                </div>
-              ) : (
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-              <p className="text-gray-500 mb-2">Set product image</p>
-            </div>
-              )}
-
-              <input
-                ref={fileInputRef}
-                id="featuredImageFile"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  
-                  // Validate file size (5MB)
-                  if (file.size > 5 * 1024 * 1024) {
-                    alert('File size must be less than 5MB')
-                    e.target.value = ''
-                    return
-                  }
-                  
-                  // Validate file type
-                  if (!file.type.startsWith('image/')) {
-                    alert('Please select an image file (JPG, PNG, or WebP)')
-                    e.target.value = ''
-                    return
-                  }
-                  
-                  // Create preview URL
-                  const previewUrl = URL.createObjectURL(file)
-                  setFeaturedImageFile(file)
-                  setFeaturedImagePreview(previewUrl)
-                  // Clear the existing URL from form (will be set after upload on save)
-                  setValue('featuredImage' as any, undefined, { shouldDirty: true })
-                  e.target.value = ''
-                }}
-              />
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Choose Image
-                </button>
-                {(featuredImagePreview || watch('featuredImage')) && (
-                  <button
-                    type="button"
-                    className="text-red-600 hover:text-red-800 text-sm"
-                    onClick={() => {
-                      if (featuredImagePreview) {
-                        URL.revokeObjectURL(featuredImagePreview)
-                        setFeaturedImagePreview(null)
-                      }
-                      setFeaturedImageFile(null)
-                      setValue('featuredImage' as any, undefined, { shouldDirty: true })
-                    }}
-                  >
-                    Remove
-                  </button>
-                )}
-          </div>
-              <p className="text-xs text-gray-500">Max 5MB. JPG/PNG/WebP supported.</p>
-            </div>
-          </div>
-
-          {/* Product Gallery */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="font-semibold mb-4">Product Gallery</h3>
-            <div className="space-y-3">
-              {(watch('gallery') && (watch('gallery') as string[]).length > 0) || galleryPreviews.length > 0 ? (
-                <div className="grid grid-cols-3 gap-3">
-                  {/* Show existing gallery images */}
-                  {(watch('gallery') as string[] || []).map((imageUrl, index) => (
-                    <div key={`existing-${index}`} className="relative group">
-                      <img
-                        src={imageUrl}
-                        alt={`Gallery ${index + 1}`}
-                        className="w-full h-32 object-cover border border-gray-200 rounded-lg"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentGallery = (watch('gallery') as string[]) || []
-                          const newGallery = currentGallery.filter((_, i) => i !== index)
-                          setValue('gallery' as any, newGallery, { shouldDirty: true })
-                        }}
-                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Remove image"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {/* Show preview images from selected files */}
-                  {galleryPreviews.map((previewUrl, index) => (
-                    <div key={`preview-${index}`} className="relative group">
-                      <img
-                        src={previewUrl}
-                        alt={`Preview ${index + 1}`}
-                        className="w-full h-32 object-cover border border-gray-200 rounded-lg"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          URL.revokeObjectURL(previewUrl)
-                          const newPreviews = galleryPreviews.filter((_, i) => i !== index)
-                          const newFiles = galleryFiles.filter((_, i) => i !== index)
-                          setGalleryPreviews(newPreviews)
-                          setGalleryFiles(newFiles)
-                        }}
-                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Remove image"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <p className="text-gray-500 mb-2">No gallery images</p>
-                  <p className="text-sm text-gray-400">Add images to show in product gallery</p>
-                </div>
-              )}
-
-              <input
-                ref={galleryInputRef}
-                id="galleryImageFile"
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const files = e.target.files
-                  if (!files || files.length === 0) return
-
-                  const newFiles: File[] = []
-                  const newPreviews: string[] = []
-
-                  // Validate and create previews for each file
-                  for (let i = 0; i < files.length; i++) {
-                    const file = files[i]
-                    
-                    // Validate file size (5MB)
-                    if (file.size > 5 * 1024 * 1024) {
-                      alert(`File "${file.name}" is too large. Max 5MB per image.`)
-                      continue
-                    }
-                    
-                    // Validate file type
-                    if (!file.type.startsWith('image/')) {
-                      alert(`File "${file.name}" is not an image file.`)
-                      continue
-                    }
-                    
-                    newFiles.push(file)
-                    newPreviews.push(URL.createObjectURL(file))
-                  }
-
-                  if (newFiles.length > 0) {
-                    setGalleryFiles([...galleryFiles, ...newFiles])
-                    setGalleryPreviews([...galleryPreviews, ...newPreviews])
-                  }
-                  
-                  e.target.value = ''
-                }}
-              />
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                  onClick={() => galleryInputRef.current?.click()}
-                >
-                  Add Gallery Images
-                </button>
-                {((watch('gallery') && (watch('gallery') as string[]).length > 0) || galleryPreviews.length > 0) && (
-                  <button
-                    type="button"
-                    className="text-red-600 hover:text-red-800 text-sm"
-                    onClick={() => {
-                      if (confirm('Remove all gallery images?')) {
-                        // Clear existing gallery
-                        setValue('gallery' as any, [], { shouldDirty: true })
-                        // Clear preview URLs
-                        galleryPreviews.forEach((url) => URL.revokeObjectURL(url))
-                        setGalleryPreviews([])
-                        setGalleryFiles([])
-                      }
-                    }}
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-gray-500">Max 5MB per image. JPG/PNG/WebP supported. You can select multiple images at once.</p>
-            </div>
-          </div>
         </div>
       </div>
-    </div>
+    </form>
   )
 }

@@ -20,7 +20,6 @@ import reviewRoutes from './routes/reviews'
 import settingsRoutes from './routes/settings'
 import analyticsRoutes from './routes/analytics'
 import reportsRoutes from './routes/reports'
-import uploadsRoutes from './routes/uploads'
 
 // Load environment variables from project root
 // Go up two levels from apps/api to project root
@@ -30,8 +29,6 @@ const app = express()
 const PORT = process.env.PORT || 5000
 
 // Middleware
-// Allow the Admin app (http://localhost:3001) to embed images served by the API (http://localhost:5000/uploads/*).
-// Without this, browsers block <img> due to Cross-Origin-Resource-Policy: same-origin.
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -43,12 +40,27 @@ app.use(
     credentials: true,
   })
 )
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+// Body parsers - skip multipart/form-data (handled by multer)
+app.use(express.json({ 
+  type: (req) => {
+    // Skip parsing if Content-Type is multipart/form-data
+    const contentType = req.headers['content-type'] || ''
+    return !contentType.includes('multipart/form-data')
+  }
+}))
+app.use(express.urlencoded({ 
+  extended: true, 
+  type: (req) => {
+    // Skip parsing if Content-Type is multipart/form-data
+    const contentType = req.headers['content-type'] || ''
+    return !contentType.includes('multipart/form-data')
+  }
+}))
 app.use(cookieParser())
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')))
+// Serve static files (uploads)
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads')
+app.use('/uploads', express.static(UPLOAD_DIR))
 
 // Health check
 app.get('/health', (req, res) => {
@@ -78,7 +90,6 @@ app.use('/api/v1/reviews', reviewRoutes)
 app.use('/api/v1/settings', settingsRoutes)
 app.use('/api/v1/analytics', analyticsRoutes)
 app.use('/api/v1/reports', reportsRoutes)
-app.use('/api/v1/uploads', uploadsRoutes)
 
 // Error handler (must be last)
 app.use(errorHandler)
