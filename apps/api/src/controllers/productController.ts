@@ -6,24 +6,6 @@ import { AppError, asyncHandler } from '../middleware/errorHandler'
 import { AuthRequest } from '../middleware/auth'
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '../config/constants'
 
-// Helper function to transform image URLs to relative paths
-// Converts absolute URLs (localhost or Vercel) to relative paths
-// This makes images work on both local and Vercel
-const transformImageUrl = (url: string | undefined): string | undefined => {
-  if (!url) return undefined
-  // If it's an absolute URL, extract just the path
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    try {
-      const urlObj = new URL(url)
-      return urlObj.pathname // Returns /uploads/products/filename.webp
-    } catch {
-      return url
-    }
-  }
-  // Already relative, return as is
-  return url
-}
-
 /**
  * @route   GET /api/v1/products
  * @desc    List/search products with filters
@@ -137,18 +119,6 @@ export const getProducts = asyncHandler(async (req: AuthRequest, res: Response) 
     Product.countDocuments(query),
   ])
 
-  // Transform image URLs to relative paths (works on both local and Vercel)
-  // Convert any absolute URLs (localhost or Vercel) to relative paths
-  // Transform all product image URLs to relative paths
-  products.forEach((product: any) => {
-    if (product.featuredImage) {
-      product.featuredImage = transformImageUrl(product.featuredImage)
-    }
-    if (product.gallery && Array.isArray(product.gallery)) {
-      product.gallery = product.gallery.map((url: string) => transformImageUrl(url))
-    }
-  })
-
   // Debug: Log returned products statuses
   const statusCounts = products.reduce((acc: any, p: any) => {
     acc[p.status] = (acc[p.status] || 0) + 1
@@ -203,18 +173,9 @@ export const getProduct = asyncHandler(async (req: AuthRequest, res: Response) =
     }
   }
 
-  // Transform image URLs to relative paths
-  const productObj = product.toObject()
-  if (productObj.featuredImage) {
-    productObj.featuredImage = transformImageUrl(productObj.featuredImage)
-  }
-  if (productObj.gallery && Array.isArray(productObj.gallery)) {
-    productObj.gallery = productObj.gallery.map((url: string) => transformImageUrl(url))
-  }
-
   res.json({
     success: true,
-    data: productObj,
+    data: product,
   })
 })
 
@@ -244,18 +205,9 @@ export const getProductBySlug = asyncHandler(async (req: AuthRequest, res: Respo
     throw new AppError('Product not found', 404)
   }
 
-  // Transform image URLs to relative paths
-  const productObj = product.toObject()
-  if (productObj.featuredImage) {
-    productObj.featuredImage = transformImageUrl(productObj.featuredImage)
-  }
-  if (productObj.gallery && Array.isArray(productObj.gallery)) {
-    productObj.gallery = productObj.gallery.map((url: string) => transformImageUrl(url))
-  }
-
   res.json({
     success: true,
-    data: productObj,
+    data: product,
   })
 })
 
