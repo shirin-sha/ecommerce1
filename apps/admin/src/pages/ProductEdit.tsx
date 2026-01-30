@@ -2144,9 +2144,11 @@ export default function ProductEdit() {
             position: attr.position || 0,
           }
         }).filter((attr: any) => attr.attributeId && attr.attributeId.trim() !== '') // Remove attributes without valid attributeId
-      } else if (!isNew) {
+      } else if (!isNew && data.attributes === undefined) {
         // For updates, if attributes is not provided, don't send it (to avoid overwriting existing attributes)
-        delete data.attributes
+        // Use object destructuring to remove attributes from the payload
+        const { attributes, ...restData } = data
+        Object.assign(data, restData)
       }
 
       // Log the data being sent for debugging
