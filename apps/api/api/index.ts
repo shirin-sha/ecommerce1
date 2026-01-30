@@ -2,8 +2,6 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
-import path from 'path'
-import fs from 'fs'
 import { connectDatabase } from '../src/config/database'
 import { errorHandler } from '../src/middleware/errorHandler'
 import authRoutes from '../src/routes/auth'
@@ -95,33 +93,6 @@ app.use(
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
-
-// Serve static files (uploads) - handle both local and Vercel
-const getUploadDir = () => {
-  if (process.env.UPLOAD_DIR) {
-    return process.env.UPLOAD_DIR
-  }
-  // Vercel: Use /tmp (only writable directory in serverless)
-  if (process.env.VERCEL || process.env.VERCEL_ENV) {
-    return '/tmp/uploads'
-  }
-  // Local development
-  return path.join(process.cwd(), 'uploads')
-}
-
-const UPLOAD_DIR = getUploadDir()
-// Only serve static files if directory exists (don't crash if it doesn't)
-try {
-  if (fs.existsSync(UPLOAD_DIR)) {
-    app.use('/uploads', express.static(UPLOAD_DIR))
-    console.log('✅ Static file serving enabled for:', UPLOAD_DIR)
-  } else {
-    console.warn('⚠️ Upload directory does not exist:', UPLOAD_DIR)
-    console.warn('   Static file serving disabled. Files will not be accessible via /uploads')
-  }
-} catch (error: any) {
-  console.warn('⚠️ Could not set up static file serving:', error?.message)
-}
 
 // Health check
 app.get('/health', (req, res) => {
