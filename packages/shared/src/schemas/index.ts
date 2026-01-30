@@ -97,7 +97,43 @@ export const createProductSchema = z.object({
   metaDescription: z.string().optional(),
 })
 
-export const updateProductSchema = createProductSchema.partial()
+// Update schema - all fields optional
+// Title is optional for updates - empty strings are allowed (will be handled in controller)
+// Attributes schema is more lenient for updates to handle various data formats
+export const updateProductSchema = createProductSchema.partial().extend({
+  title: z.string().or(z.literal('')).optional(),
+  attributes: z
+    .array(
+      z.object({
+        attributeId: z.union([z.string(), z.any()]).optional(), // Allow string or any (for object conversion)
+        name: z.string().optional(), // Make name optional
+        values: z.array(z.union([z.string(), z.any()])).optional().default([]), // Allow any values and make optional
+        usedForVariations: z.boolean().optional().default(false),
+        visibleOnProductPage: z.boolean().optional().default(true),
+        position: z.number().int().optional().default(0),
+      })
+    )
+    .optional()
+    .default([]),
+})
+
+// Schema for saving only attributes (like WooCommerce)
+export const saveAttributesSchema = z.object({
+  attributes: z
+    .array(
+      z.object({
+        attributeId: z.string(),
+        name: z.string(),
+        values: z.array(z.string()),
+        usedForVariations: z.boolean().default(false),
+        visibleOnProductPage: z.boolean().default(true),
+        position: z.number().int().default(0),
+      })
+    )
+    .optional()
+    .default([]),
+  type: z.enum(['simple', 'variable']).optional(), // Also save product type
+})
 
 // Category schemas
 export const createCategorySchema = z.object({
@@ -124,7 +160,7 @@ export const updateTagSchema = createTagSchema.partial()
 export const createAttributeSchema = z.object({
   name: z.string().min(1, 'Attribute name is required'),
   slug: z.string().optional(),
-  type: z.enum(['select']).default('select'),
+  type: z.enum(['select', 'colour', 'image', 'button', 'radio']).default('select'),
   orderBy: z.enum(['menu_order', 'name', 'id']).default('menu_order'),
   hasArchives: z.boolean().default(true),
 })

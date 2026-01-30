@@ -1,10 +1,14 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm, useFieldArray, Control, UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useQueryClient } from '@tanstack/react-query'
 import { useProduct, useCreateProduct, useUpdateProduct } from '../hooks/useProducts'
 import { useAttributes, useAttributeTerms } from '../hooks/useAttributes'
-import { createProductSchema, CreateProductInput, Product, Variation } from '@ecommerce/shared'
-import { Save, Eye, Info, Plus, X, Trash2, Upload, Image as ImageIcon, ArrowLeft, ArrowRight } from 'lucide-react'
+import { useCategories } from '../hooks/useCategories'
+import { useTags, useCreateTag } from '../hooks/useTags'
+import { createProductSchema, CreateProductInput, Product, Variation, Category } from '@ecommerce/shared'
+import { Save, Eye, Info, Plus, X, Trash2, Upload, Image as ImageIcon, ArrowLeft, ArrowRight, ChevronRight, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import api from '../lib/api'
 import {
@@ -352,6 +356,434 @@ function ProductGalleryUpload({ images, onImagesChange }: ProductGalleryUploadPr
               className="hidden"
             />
           </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Category Tree Selector Component
+interface CategoryTreeSelectorProps {
+  selectedCategoryIds: string[]
+  onSelectionChange: (categoryIds: string[]) => void
+}
+
+function CategoryTreeSelector({ selectedCategoryIds, onSelectionChange }: CategoryTreeSelectorProps) {
+  const { data: allCategories } = useCategories()
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Auto-expand categories that have selected children
+  useEffect(() => {
+    if (!allCategories || selectedCategoryIds.length === 0) return
+
+    const newExpanded = new Set<string>()
+    
+    // Find all ancestors of selected categories
+    const findAncestors = (categoryId: string): string[] => {
+      const ancestors: string[] = []
+      const category = allCategories.find(c => c._id === categoryId)
+      if (!category || !category.parentId) return ancestors
+      
+      const parentId = typeof category.parentId === 'string' 
+        ? category.parentId 
+        : (category.parentId as any)?._id || String(category.parentId)
+      
+      ancestors.push(parentId)
+      ancestors.push(...findAncestors(parentId))
+      return ancestors
+    }
+
+    selectedCategoryIds.forEach(catId => {
+      const ancestors = findAncestors(catId)
+      ancestors.forEach(ancestorId => newExpanded.add(ancestorId))
+    })
+
+    setExpandedCategories(prev => {
+      const combined = new Set([...prev, ...newExpanded])
+      return combined
+    })
+  }, [allCategories, selectedCategoryIds])
+
+  // Build category tree structure
+  const buildCategoryTree = (categories: Category[] = []): (Category & { children?: Category[] })[] => {
+    const categoryMap = new Map<string, Category & { children?: Category[] }>()
+    const rootCategories: (Category & { children?: Category[] })[] = []
+
+    // Helper to get parentId as string
+    const getParentId = (cat: Category): string | null => {
+      if (!cat.parentId) return null
+      if (typeof cat.parentId === 'string') return cat.parentId
+      if (typeof cat.parentId === 'object' && cat.parentId !== null) {
+        return (cat.parentId as any)._id || String(cat.parentId)
+      }
+      return String(cat.parentId)
+    }
+
+    // First pass: create map of all categories
+    categories.forEach(cat => {
+      categoryMap.set(cat._id, { ...cat, children: [] })
+    })
+
+    // Second pass: build tree
+    categories.forEach(cat => {
+      const category = categoryMap.get(cat._id)!
+      const parentId = getParentId(cat)
+      
+      if (parentId) {
+        const parent = categoryMap.get(parentId)
+        if (parent) {
+          if (!parent.children) parent.children = []
+          parent.children.push(category)
+        } else {
+          // Parent not found in list, treat as root
+          rootCategories.push(category)
+        }
+      } else {
+        rootCategories.push(category)
+      }
+    })
+
+    return rootCategories
+  }
+
+  // Find matching categories for search highlighting
+  const matchingCategoryIds = searchQuery
+    ? new Set(
+        (allCategories || [])
+          .filter(cat => cat.name.toLowerCase().includes(searchQuery.toLowerCase()))
+          .map(cat => cat._id)
+      )
+    : new Set<string>()
+
+  // When searching, expand all categories to show matches
+  useEffect(() => {
+    if (searchQuery && matchingCategoryIds.size > 0 && allCategories) {
+      const allIds = new Set<string>(matchingCategoryIds)
+      const categories = allCategories // Store in local variable for TypeScript
+      // Also expand parents of matching categories
+      categories.forEach(cat => {
+        if (matchingCategoryIds.has(cat._id) && cat.parentId) {
+          const parentId = typeof cat.parentId === 'string' 
+            ? cat.parentId 
+            : (cat.parentId as any)?._id || String(cat.parentId)
+          allIds.add(parentId)
+          // Expand all ancestors
+          let current = categories.find(c => c._id === parentId)
+          while (current?.parentId) {
+            const grandParentId = typeof current.parentId === 'string'
+              ? current.parentId
+              : (current.parentId as any)?._id || String(current.parentId)
+            allIds.add(grandParentId)
+            current = categories.find(c => c._id === grandParentId)
+          }
+        }
+      })
+      setExpandedCategories(allIds)
+    }
+  }, [searchQuery, matchingCategoryIds, allCategories])
+
+  const categoryTree = buildCategoryTree(allCategories || [])
+
+  const toggleCategory = (categoryId: string) => {
+    const newSelection = [...selectedCategoryIds]
+    const index = newSelection.indexOf(categoryId)
+    
+    if (index > -1) {
+      newSelection.splice(index, 1)
+    } else {
+      newSelection.push(categoryId)
+    }
+    
+    onSelectionChange(newSelection)
+  }
+
+  const toggleExpand = (categoryId: string) => {
+    const newExpanded = new Set(expandedCategories)
+    if (newExpanded.has(categoryId)) {
+      newExpanded.delete(categoryId)
+    } else {
+      newExpanded.add(categoryId)
+    }
+    setExpandedCategories(newExpanded)
+  }
+
+  const renderCategoryNode = (category: Category & { children?: Category[] }, level: number = 0) => {
+    const hasChildren = category.children && category.children.length > 0
+    const isExpanded = expandedCategories.has(category._id)
+    const isSelected = selectedCategoryIds.includes(category._id)
+    const isMatchingSearch = searchQuery && matchingCategoryIds.has(category._id)
+
+    return (
+      <div key={category._id} className="select-none">
+        <div 
+          className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-50 rounded"
+          style={{ paddingLeft: `${level * 20 + 8}px` }}
+        >
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={() => toggleExpand(category._id)}
+              className="p-0.5 hover:bg-gray-200 rounded"
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-4 h-4 text-gray-600" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-gray-600" />
+              )}
+            </button>
+          ) : (
+            <span className="w-5" /> // Spacer for alignment
+          )}
+          
+          <label className="flex items-center gap-2 flex-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleCategory(category._id)}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span className={`text-sm ${isMatchingSearch ? 'font-semibold text-blue-700 bg-yellow-100 px-1 rounded' : 'text-gray-700'}`}>
+              {category.name}
+            </span>
+            {category.count !== undefined && category.count > 0 && (
+              <span className="text-xs text-gray-500">({category.count})</span>
+            )}
+          </label>
+        </div>
+        
+        {hasChildren && isExpanded && (
+          <div>
+            {category.children!.map(child => renderCategoryNode(child, level + 1))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Search Box */}
+      <div>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search categories..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+        />
+      </div>
+
+      {/* Category Tree */}
+      <div className="border border-gray-300 rounded-lg max-h-96 overflow-y-auto bg-white">
+        {categoryTree.length === 0 ? (
+          <div className="p-4 text-sm text-gray-500 text-center">
+            No categories available. <a href="/categories" className="text-blue-600 hover:underline">Create categories first</a>
+          </div>
+        ) : matchingCategoryIds.size === 0 && searchQuery ? (
+          <div className="p-4 text-sm text-gray-500 text-center">
+            No categories found matching "{searchQuery}"
+          </div>
+        ) : (
+          <div className="p-2">
+            {categoryTree.map(category => renderCategoryNode(category))}
+          </div>
+        )}
+      </div>
+      
+      {selectedCategoryIds.length > 0 && (
+        <div className="border-t border-gray-200 p-3 bg-gray-50">
+          <p className="text-xs text-gray-600 mb-2">
+            <strong>{selectedCategoryIds.length}</strong> categor{selectedCategoryIds.length === 1 ? 'y' : 'ies'} selected
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {selectedCategoryIds.map(catId => {
+              const cat = allCategories?.find(c => c._id === catId)
+              return cat ? (
+                <span
+                  key={catId}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs"
+                >
+                  {cat.name}
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(catId)}
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ) : null
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Tag Selector Component
+interface TagSelectorProps {
+  selectedTagIds: string[]
+  onSelectionChange: (tagIds: string[]) => void
+}
+
+function TagSelector({ selectedTagIds, onSelectionChange }: TagSelectorProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [newTagInput, setNewTagInput] = useState('')
+  const { data: allTags, isLoading } = useTags(searchQuery)
+  const createTag = useCreateTag()
+
+  const handleToggleTag = (tagId: string) => {
+    const newSelection = [...selectedTagIds]
+    const index = newSelection.indexOf(tagId)
+    
+    if (index > -1) {
+      newSelection.splice(index, 1)
+    } else {
+      newSelection.push(tagId)
+    }
+    
+    onSelectionChange(newSelection)
+  }
+
+  const handleCreateTag = async () => {
+    const tagName = newTagInput.trim()
+    if (!tagName) return
+
+    // Check if tag already exists
+    const existingTag = allTags?.find(t => t.name.toLowerCase() === tagName.toLowerCase())
+    if (existingTag) {
+      // If exists, just select it
+      if (!selectedTagIds.includes(existingTag._id)) {
+        handleToggleTag(existingTag._id)
+      }
+      setNewTagInput('')
+      return
+    }
+
+    try {
+      const result = await createTag.mutateAsync({ name: tagName })
+      const newTagId = result.data?._id || result._id
+      if (newTagId) {
+        onSelectionChange([...selectedTagIds, newTagId])
+      }
+      setNewTagInput('')
+    } catch (error: any) {
+      console.error('Error creating tag:', error)
+      alert(error?.response?.data?.error || 'Failed to create tag')
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleCreateTag()
+    }
+  }
+
+  const filteredTags = allTags?.filter(tag =>
+    tag.name.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || []
+
+  return (
+    <div className="space-y-3">
+      {/* Search and Create */}
+      <div className="space-y-2">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search tags..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newTagInput}
+            onChange={(e) => setNewTagInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Add new tag"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          <button
+            type="button"
+            onClick={handleCreateTag}
+            disabled={!newTagInput.trim() || createTag.isPending}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-1 text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Tags List */}
+      <div className="border border-gray-300 rounded-lg max-h-64 overflow-y-auto bg-white">
+        {isLoading ? (
+          <div className="p-4 text-sm text-gray-500 text-center">Loading tags...</div>
+        ) : filteredTags.length === 0 ? (
+          <div className="p-4 text-sm text-gray-500 text-center">
+            {searchQuery ? (
+              <>No tags found matching "{searchQuery}"</>
+            ) : (
+              <>
+                No tags available. <a href="/tags" className="text-blue-600 hover:underline">Create tags first</a>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="p-2">
+            {filteredTags.map(tag => {
+              const isSelected = selectedTagIds.includes(tag._id)
+              return (
+                <label
+                  key={tag._id}
+                  className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-50 rounded cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => handleToggleTag(tag._id)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 flex-1">{tag.name}</span>
+                  {tag.count !== undefined && tag.count > 0 && (
+                    <span className="text-xs text-gray-500">({tag.count})</span>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </div>
+      
+      {/* Selected Tags Summary */}
+      {selectedTagIds.length > 0 && (
+        <div className="border-t border-gray-200 p-3 bg-gray-50">
+          <p className="text-xs text-gray-600 mb-2">
+            <strong>{selectedTagIds.length}</strong> tag{selectedTagIds.length === 1 ? '' : 's'} selected
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {selectedTagIds.map(tagId => {
+              const tag = allTags?.find(t => t._id === tagId)
+              return tag ? (
+                <span
+                  key={tagId}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs"
+                >
+                  {tag.name}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleTag(tagId)}
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ) : null
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -722,7 +1154,6 @@ function ProductVariationsTab({
     watch,
     setValue,
     control,
-    formState: { isDirty },
   } = useForm<{ variations: VariationFormItem[] }>({
     defaultValues: { variations: [] },
   })
@@ -804,21 +1235,28 @@ function ProductVariationsTab({
           }
         }
 
+        // Clean up optional numeric fields - convert NaN to undefined
+        // This happens when valueAsNumber: true is used with empty inputs
+        const cleanedSalePrice = v.salePrice !== undefined && !isNaN(v.salePrice) ? v.salePrice : undefined
+        const cleanedWeight = v.weight !== undefined && !isNaN(v.weight) ? v.weight : undefined
+        const cleanedStockQty = v.stockQty !== undefined && !isNaN(v.stockQty) ? v.stockQty : undefined
+
         const patch: Partial<Variation> = {
           sku: v.sku,
           barcode: v.barcode,
+          image: v.image,
           status: v.status,
           regularPrice: v.regularPrice,
-          salePrice: v.salePrice,
+          salePrice: cleanedSalePrice,
           saleStart: v.saleStart,
           saleEnd: v.saleEnd,
           stockStatus: v.stockStatus,
-          weight: v.weight,
+          weight: cleanedWeight,
           dimensions: cleanedDimensions,
           shippingClass: v.shippingClass,
           description: v.description,
           attributeSelections: v.attributeSelections,
-          stockQty: v.manageStock ? v.stockQty : undefined,
+          stockQty: v.manageStock ? cleanedStockQty : undefined,
         }
         await updateVariation.mutateAsync({ productId, varId: v._id, patch })
       }
@@ -854,61 +1292,137 @@ function ProductVariationsTab({
     )
   }
 
+  // Check for variations without prices
+  const variationsWithoutPrice = variationsValues.filter(
+    (v) => !v.regularPrice || v.regularPrice <= 0
+  ).length
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={handleRegenerate}
-            className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            Regenerate variations
-          </button>
-          <button
-            type="button"
-            onClick={handleAddManual}
-            className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            Add manually
-          </button>
-          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <option>Bulk actions</option>
-          </select>
+      {/* Top Controls */}
+      <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-700">Default Form Values:</label>
+            <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option>No default</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 text-sm text-blue-600">
-          <button
-            type="button"
-            onClick={() => {
-              const all = Object.fromEntries((variationsValues || []).map((v) => [v._id, true]))
-              setExpanded(all)
-            }}
-            className="hover:underline"
-          >
-            Expand
-          </button>
-          <button type="button" onClick={() => setExpanded({})} className="hover:underline">
-            Close
-          </button>
+        <div className="flex items-center justify-between">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleRegenerate}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+            >
+              Regenerate variations
+            </button>
+            <button
+              type="button"
+              onClick={handleAddManual}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+            >
+              Add manually
+            </button>
+            <div className="relative">
+              <select className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm appearance-none pr-8">
+                <option>Bulk actions</option>
+              </select>
+            </div>
+          </div>
         </div>
+
+        {/* Warning about variations without prices */}
+        {variationsWithoutPrice > 0 && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-800">
+              {variationsWithoutPrice} variation{variationsWithoutPrice > 1 ? 's' : ''} do{variationsWithoutPrice > 1 ? '' : 'es'} not have a price. Variations (and their attributes) that do not have prices will not be shown in your store.
+            </p>
+          </div>
+        )}
       </div>
 
-      {variationAttributes.length === 0 && (
-        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-          Add attributes (with values) and tick <strong>Used for variations</strong> in the Attributes tab, then click{' '}
-          <strong>Regenerate variations</strong>.
+      {variationAttributes.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+          <div className="text-center py-8">
+            <p className="text-gray-600 mb-2">
+              Add some attributes in the Attributes tab to generate variations. Make sure to check the{' '}
+              <strong>Used for variations</strong> box.{' '}
+              <a href="#" className="text-blue-600 hover:underline" onClick={(e) => e.preventDefault()}>
+                Learn more
+              </a>
+              .
+            </p>
+          </div>
         </div>
-      )}
-
-      {isLoading ? (
+      ) : isLoading ? (
         <div className="text-sm text-gray-600">Loading variations...</div>
       ) : fields.length === 0 ? (
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
-          No variations yet. Use <strong>Regenerate variations</strong> or <strong>Add manually</strong>.
+        <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+          <div className="text-center py-8">
+            <p className="text-gray-600 mb-2">
+              Add some attributes in the Attributes tab to generate variations. Make sure to check the{' '}
+              <strong>Used for variations</strong> box.{' '}
+              <a href="#" className="text-blue-600 hover:underline" onClick={(e) => e.preventDefault()}>
+                Learn more
+              </a>
+              .
+            </p>
+          </div>
         </div>
       ) : (
         <form onSubmit={handleSubmit(onSaveVariations)} className="space-y-3">
+          {/* Variation Selector */}
+          {fields.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <select
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm"
+                    onChange={(e) => {
+                      const selectedId = e.target.value
+                      if (selectedId) {
+                        setExpanded({ [selectedId]: true })
+                        const element = document.getElementById(`variation-${selectedId}`)
+                        element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      }
+                    }}
+                  >
+                    <option value="">Select variation...</option>
+                    {variationsValues.map((v) => {
+                      const selections = v?.attributeSelections || {}
+                      const summary =
+                        Object.keys(selections).length > 0
+                          ? Object.entries(selections)
+                              .map(([k, val]) => `${k}: ${val}`)
+                              .join(', ')
+                          : 'Any...'
+                      return (
+                        <option key={v._id} value={v._id}>
+                          #{v?._id?.slice(-6)} — {summary}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const all = Object.fromEntries((variationsValues || []).map((v) => [v._id, true]))
+                      setExpanded(all)
+                    }}
+                    className="hover:underline"
+                  >
+                    Expand / Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {fields.map((f, idx) => {
             const v = variationsValues[idx]
             const isOpen = !!expanded[v?._id || f.id]
@@ -921,29 +1435,162 @@ function ProductVariationsTab({
                 : 'Any...'
 
             return (
-              <div key={f.id} className="border border-gray-200 rounded-lg">
-                <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
-                  <button
-                    type="button"
-                    onClick={() => setExpanded((prev) => ({ ...prev, [v._id]: !isOpen }))}
-                    className="text-sm font-medium text-gray-900"
-                  >
-                    #{v?._id?.slice(-6)} — {summary}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!confirm('Delete this variation?')) return
-                      await deleteVariation.mutateAsync({ productId, varId: v._id })
-                    }}
-                    className="text-sm text-red-600 hover:underline"
-                  >
-                    Remove
-                  </button>
+              <div key={f.id} id={`variation-${v._id}`} className="bg-white border border-gray-200 rounded-lg shadow">
+                <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((prev) => ({ ...prev, [v._id]: !isOpen }))}
+                      className="text-sm font-medium text-gray-900 flex items-center gap-2"
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                      #{v?._id?.slice(-6)} — {summary}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(!v.regularPrice || v.regularPrice <= 0) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setValue(`variations.${idx}.regularPrice` as any, product?.regularPrice || 0, { shouldDirty: true })
+                          setExpanded((prev) => ({ ...prev, [v._id]: true }))
+                        }}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Add price
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!confirm('Delete this variation?')) return
+                        await deleteVariation.mutateAsync({ productId, varId: v._id })
+                      }}
+                      className="text-sm text-red-600 hover:underline"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((prev) => ({ ...prev, [v._id]: !isOpen }))}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
 
                 {isOpen && (
                   <div className="p-4 space-y-6">
+                    {/* Variation Image and Basic Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Image Upload */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Variation image</label>
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex items-center justify-center h-32 bg-gray-50">
+                          {v?.image ? (
+                            <div className="relative w-full h-full">
+                              <img
+                                src={v.image}
+                                alt="Variation"
+                                className="w-full h-full object-cover rounded"
+                              />
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const formData = new FormData()
+                                    const input = document.createElement('input')
+                                    input.type = 'file'
+                                    input.accept = 'image/*'
+                                    input.onchange = async (e: any) => {
+                                      const file = e.target.files?.[0]
+                                      if (!file) return
+                                      formData.append('image', file)
+                                      const response = await api.post('/products/upload-image', formData, {
+                                        headers: { 'Content-Type': 'multipart/form-data' },
+                                      })
+                                      if (response.data.success && response.data.data?.url) {
+                                        let imageUrl = response.data.data.url
+                                        if (imageUrl.startsWith('/')) {
+                                          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+                                          const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
+                                          imageUrl = baseUrl + imageUrl
+                                        }
+                                        setValue(`variations.${idx}.image` as any, imageUrl, { shouldDirty: true })
+                                      }
+                                    }
+                                    input.click()
+                                  } catch (error: any) {
+                                    alert(error?.response?.data?.error || 'Failed to upload image')
+                                  }
+                                }}
+                                className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const formData = new FormData()
+                                  const input = document.createElement('input')
+                                  input.type = 'file'
+                                  input.accept = 'image/*'
+                                  input.onchange = async (e: any) => {
+                                    const file = e.target.files?.[0]
+                                    if (!file) return
+                                    formData.append('image', file)
+                                    const response = await api.post('/products/upload-image', formData, {
+                                      headers: { 'Content-Type': 'multipart/form-data' },
+                                    })
+                                    if (response.data.success && response.data.data?.url) {
+                                      let imageUrl = response.data.data.url
+                                      if (imageUrl.startsWith('/')) {
+                                        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+                                        const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
+                                        imageUrl = baseUrl + imageUrl
+                                      }
+                                      setValue(`variations.${idx}.image` as any, imageUrl, { shouldDirty: true })
+                                    }
+                                  }
+                                  input.click()
+                                } catch (error: any) {
+                                  alert(error?.response?.data?.error || 'Failed to upload image')
+                                }
+                              }}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <ImageIcon className="w-8 h-8" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* SKU and GTIN */}
+                      <div className="md:col-span-2 space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">SKU</label>
+                          <input
+                            {...register(`variations.${idx}.sku` as any)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            placeholder="SKU"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">GTIN, UPC, EAN, or ISBN</label>
+                          <input
+                            {...register(`variations.${idx}.barcode` as any)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            placeholder="GTIN, UPC, EAN, or ISBN"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Attribute Selections */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {variationAttributes.map((attr) => (
                         <div key={attr.attributeId}>
@@ -956,6 +1603,7 @@ function ProductVariationsTab({
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           >
+                            <option value="">Select {attr.name}...</option>
                             {attr.values.map((val) => (
                               <option key={val} value={val}>
                                 {val}
@@ -1016,24 +1664,48 @@ function ProductVariationsTab({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Regular price</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Regular price <span className="text-red-500">*</span>
+                        </label>
                         <input
                           {...register(`variations.${idx}.regularPrice` as any, { valueAsNumber: true })}
                           type="number"
                           step="0.01"
                           min="0"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          placeholder="Variation price (required)"
                         />
+                        <p className="text-xs text-gray-500 mt-1">Each variation can have a different price</p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Sale price</label>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium text-gray-700">Sale price</label>
+                          <button
+                            type="button"
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              // TODO: Implement schedule sale price functionality
+                              alert('Schedule sale price feature coming soon')
+                            }}
+                          >
+                            Schedule
+                          </button>
+                        </div>
                         <input
-                          {...register(`variations.${idx}.salePrice` as any, { valueAsNumber: true })}
+                          {...register(`variations.${idx}.salePrice` as any, {
+                            setValueAs: (v) => {
+                              if (v === '' || v === null || v === undefined || isNaN(Number(v))) return undefined
+                              return Number(v)
+                            },
+                          })}
                           type="number"
                           step="0.01"
                           min="0"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          placeholder="Sale price"
                         />
+                        <p className="text-xs text-gray-500 mt-1">Optional discounted price for this variation</p>
                       </div>
                     </div>
 
@@ -1052,7 +1724,12 @@ function ProductVariationsTab({
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Stock quantity</label>
                         <input
-                          {...register(`variations.${idx}.stockQty` as any, { valueAsNumber: true })}
+                          {...register(`variations.${idx}.stockQty` as any, {
+                            setValueAs: (v) => {
+                              if (v === '' || v === null || v === undefined || isNaN(Number(v))) return undefined
+                              return Number(v)
+                            },
+                          })}
                           type="number"
                           min="0"
                           disabled={!v?.manageStock}
@@ -1079,11 +1756,15 @@ function ProductVariationsTab({
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Shipping class</label>
-                        <input
+                        <select
                           {...register(`variations.${idx}.shippingClass` as any)}
-                          placeholder="Same as parent"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        />
+                        >
+                          <option value="">Same as parent</option>
+                          <option value="standard">Standard</option>
+                          <option value="express">Express</option>
+                          <option value="overnight">Overnight</option>
+                        </select>
                       </div>
                     </div>
 
@@ -1146,15 +1827,37 @@ function ProductVariationsTab({
             )
           })}
 
-          <div className="flex items-center justify-between pt-2">
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              disabled={generateVariations.isPending || updateVariation.isPending}
-            >
-              Save changes
-            </button>
-            <div className="text-xs text-gray-500">{isDirty ? 'Unsaved changes' : 'No changes'}</div>
+          <div className="bg-white rounded-lg shadow p-4 border border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {fields.length} variation{fields.length !== 1 ? 's' : ''} (
+              <button
+                type="button"
+                onClick={() => {
+                  const all = Object.fromEntries((variationsValues || []).map((v) => [v._id, true]))
+                  setExpanded(all)
+                }}
+                className="text-blue-600 hover:underline"
+              >
+                Expand / Close
+              </button>
+              )
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => reset()}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                disabled={generateVariations.isPending || updateVariation.isPending}
+              >
+                Save changes
+              </button>
+            </div>
           </div>
         </form>
       )}
@@ -1168,7 +1871,8 @@ export default function ProductEdit() {
   const [searchParams, setSearchParams] = useSearchParams()
   const isNew = !id
 
-  const { data: product, isLoading } = useProduct(id || '')
+  const { data: product, isLoading, refetch } = useProduct(id || '')
+  const queryClient = useQueryClient()
   const createProduct = useCreateProduct()
   const updateProduct = useUpdateProduct()
 
@@ -1236,7 +1940,23 @@ export default function ProductEdit() {
     setValue,
     setFocus,
   } = useForm<CreateProductInput>({
-    resolver: zodResolver(createProductSchema),
+    resolver: zodResolver(
+      createProductSchema.extend({
+        // Make title optional - we'll validate it manually based on status
+        title: z.string().optional(),
+      }).superRefine((data, ctx) => {
+        // For draft products, allow empty title (will be auto-generated)
+        // Only require title when publishing or updating existing product
+        if (data.status !== 'draft' && (!data.title || data.title.trim() === '')) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Product title is required when publishing',
+            path: ['title'],
+          })
+        }
+      })
+    ),
+    mode: 'onSubmit', // Only validate on submit, not on change
     defaultValues: getDefaultValues(),
   })
 
@@ -1244,8 +1964,12 @@ export default function ProductEdit() {
   useEffect(() => {
     if (product && !isNew) {
       reset(getDefaultValues())
+      // Also update the type field explicitly to ensure it's synced
+      if (product.type) {
+        setValue('type', product.type)
+      }
     }
-  }, [product, isNew, reset])
+  }, [product, isNew, reset, setValue])
 
   // Clean up dimensions object in real-time to prevent validation errors
   // If all fields are empty, set dimensions to undefined
@@ -1321,16 +2045,108 @@ export default function ProductEdit() {
         }
       }
 
-      // Ensure required fields are present
-      if (!data.title || data.title.trim() === '') {
-        alert('Product name is required')
+      // Clean up optional numeric fields - convert NaN to undefined
+      // This happens when valueAsNumber: true is used with empty inputs
+      if (data.salePrice !== undefined && (isNaN(data.salePrice) || data.salePrice === null)) {
+        data.salePrice = undefined
+      }
+      if (data.weight !== undefined && (isNaN(data.weight) || data.weight === null)) {
+        data.weight = undefined
+      }
+      if (data.stockQty !== undefined && (isNaN(data.stockQty) || data.stockQty === null)) {
+        data.stockQty = undefined
+      }
+      if (data.lowStockThreshold !== undefined && (isNaN(data.lowStockThreshold) || data.lowStockThreshold === null)) {
+        data.lowStockThreshold = undefined
+      }
+
+      // For draft products, allow saving with minimal data (e.g., just attributes)
+      // Title is only required when publishing
+      const isDraft = data.status === 'draft' || (product?.status === 'draft' && !data.status)
+      const isPublishing = data.status && data.status !== 'draft' && (data.status === 'published' || data.status === 'private')
+      
+      // Only require title if publishing
+      if (isPublishing && (!data.title || data.title.trim() === '')) {
+        alert('Product name is required to publish a product')
         setFocus('title')
         return
       }
+      
+      // For draft products (new or existing), allow empty title or auto-generate
+      if (isDraft) {
+        if (!data.title || data.title.trim() === '') {
+          // Don't send empty title - let existing title remain or use default
+          if (isNew) {
+            data.title = 'Draft Product'
+          } else {
+            // For existing products, don't update title if empty - remove from updateData
+            const { title, ...restData } = data
+            Object.assign(data, restData)
+          }
+        }
+      }
+      
+      // Clean up empty title strings - don't send them to API
+      if (data.title !== undefined && data.title.trim() === '') {
+        if (isNew) {
+          data.title = 'Draft Product'
+        } else {
+          // Remove title from update data
+          const { title, ...restData } = data
+          Object.assign(data, restData)
+        }
+      }
 
-      if (!data.regularPrice || data.regularPrice <= 0) {
+      // Regular price is only required for published products or when not just saving attributes
+      // Allow saving attributes even without price for draft products
+      if (!isDraft && (!data.regularPrice || data.regularPrice <= 0)) {
         alert('Regular price must be greater than 0')
         return
+      }
+      
+      // For draft products, set a default price if missing
+      if (isDraft && (!data.regularPrice || data.regularPrice <= 0)) {
+        data.regularPrice = 0
+      }
+
+      // Clean up attributes - convert attributeId from object to string if needed
+      // Also ensure values are strings (not objects)
+      if (data.attributes && Array.isArray(data.attributes)) {
+        data.attributes = data.attributes.map((attr: any) => {
+          // Convert attributeId from object to string
+          let attributeId = ''
+          if (attr.attributeId) {
+            if (typeof attr.attributeId === 'object' && attr.attributeId !== null) {
+              attributeId = (attr.attributeId as any)._id || String(attr.attributeId)
+            } else {
+              attributeId = String(attr.attributeId)
+            }
+          }
+
+          // Convert values array - ensure all values are strings
+          let values: string[] = []
+          if (Array.isArray(attr.values)) {
+            values = attr.values.map((v: any) => {
+              // If value is an object, extract name or _id, otherwise convert to string
+              if (typeof v === 'object' && v !== null) {
+                return v.name || v._id || String(v)
+              }
+              return String(v)
+            }).filter((v: string) => v && v.trim() !== '') // Remove empty values
+          }
+
+          return {
+            attributeId,
+            name: attr.name || '',
+            values,
+            usedForVariations: attr.usedForVariations || false,
+            visibleOnProductPage: attr.visibleOnProductPage !== false,
+            position: attr.position || 0,
+          }
+        }).filter((attr: any) => attr.attributeId && attr.attributeId.trim() !== '') // Remove attributes without valid attributeId
+      } else if (!isNew) {
+        // For updates, if attributes is not provided, don't send it (to avoid overwriting existing attributes)
+        delete data.attributes
       }
 
       // Log the data being sent for debugging
@@ -1401,28 +2217,40 @@ export default function ProductEdit() {
   }
 
   const onInvalid = (invalidErrors: any) => {
-    // Check if title is actually missing
+    // Check current tab and product status
+    const currentStatus = watch('status')
+    const isDraft = currentStatus === 'draft'
     const titleValue = watch('title')
     const titleError = errors.title || invalidErrors?.title
     
-    if (!titleValue || (typeof titleValue === 'string' && titleValue.trim() === '') || titleError) {
+    // For draft products, be more lenient with title requirement
+    // Only require title if publishing
+    if (!isDraft && (!titleValue || (typeof titleValue === 'string' && titleValue.trim() === '') || titleError)) {
       setFocus('title')
       window.scrollTo({ top: 0, behavior: 'smooth' })
-      alert('Please enter Product Name before saving.')
+      alert('Please enter Product Name before publishing.')
       return
     }
     
-    // If title is valid but other fields have errors, show those errors
-    const errorFields = Object.keys(invalidErrors || errors).filter(key => key !== 'title')
+    // For draft products, allow saving even without title (will auto-generate)
+    // Show other validation errors
+    const errorFields = Object.keys(invalidErrors || errors).filter(key => {
+      // Skip title error for draft products
+      if (key === 'title' && isDraft) return false
+      return true
+    })
+    
     if (errorFields.length > 0) {
       const errorMessages = errorFields.map(field => {
         const error = invalidErrors?.[field] || errors[field as keyof typeof errors]
         return `${field}: ${error?.message || 'Invalid'}`
       }).join('\n')
       alert(`Please fix the following errors:\n${errorMessages}`)
-    } else {
-      // Fallback if we can't determine the error
-      alert('Please check all required fields before saving.')
+    } else if (!isDraft && (!titleValue || titleValue.trim() === '')) {
+      // Only show title error for non-draft products
+      setFocus('title')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      alert('Please enter Product Name before saving.')
     }
   }
 
@@ -1438,6 +2266,52 @@ export default function ProductEdit() {
         onInvalid(errors)
       }
     )()
+  }
+
+  // Save only attributes (like WooCommerce save_attributes action)
+  const saveAttributesOnly = async () => {
+    if (!product?._id) {
+      alert('Please save the product first before adding attributes')
+      return
+    }
+
+    try {
+      const attributes = watch('attributes') || []
+      const productType = watch('type') || 'simple'
+      
+      // Prepare attributes data (convert attributeId to string if it's an object)
+      const attributesData = attributes.map((attr) => ({
+        attributeId: typeof attr.attributeId === 'object' && attr.attributeId !== null
+          ? (attr.attributeId as any)._id || String(attr.attributeId)
+          : String(attr.attributeId || ''),
+        name: attr.name,
+        values: attr.values || [],
+        usedForVariations: attr.usedForVariations || false,
+        visibleOnProductPage: attr.visibleOnProductPage !== false,
+        position: attr.position || 0,
+      }))
+
+      const response = await api.patch(`/products/${product._id}/attributes`, {
+        attributes: attributesData,
+        type: productType, // Also save product type
+      })
+
+      if (response.data.success) {
+        alert('Attributes saved successfully')
+        // Invalidate and refetch product data to update UI
+        if (product?._id) {
+          await queryClient.invalidateQueries({ queryKey: ['product', product._id] })
+          await refetch()
+          // Update form type value if it changed
+          if (response.data.data?.type) {
+            setValue('type', response.data.data.type)
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Error saving attributes:', error)
+      alert(error?.response?.data?.error || error?.response?.data?.message || 'Failed to save attributes')
+    }
   }
 
   if (!isNew && isLoading) {
@@ -1648,7 +2522,12 @@ export default function ProductEdit() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Sale Price ($)</label>
                 <input
-                  {...register('salePrice', { valueAsNumber: true })}
+                  {...register('salePrice', {
+                    setValueAs: (v) => {
+                      if (v === '' || v === null || v === undefined || isNaN(Number(v))) return undefined
+                      return Number(v)
+                    },
+                  })}
                   type="number"
                   step="0.01"
                   min="0"
@@ -1861,7 +2740,7 @@ export default function ProductEdit() {
                     setValue={setValue}
                     control={control}
                     product={product}
-                      onSave={() => saveAndStay('attributes')}
+                    onSave={product?._id ? saveAttributesOnly : () => saveAndStay('attributes')}
                   />
                 )}
 
@@ -1968,18 +2847,22 @@ export default function ProductEdit() {
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-semibold mb-4">Product Categories</h3>
             <p className="text-sm text-gray-500 mb-4">Select categories for this product</p>
-            <div className="text-sm text-gray-600">Categories selector will be implemented here</div>
+            <CategoryTreeSelector
+              selectedCategoryIds={watch('categoryIds') || []}
+              onSelectionChange={(categoryIds) => setValue('categoryIds', categoryIds, { shouldValidate: true })}
+            />
+            {errors.categoryIds && <p className="text-red-600 text-sm mt-2">{errors.categoryIds.message}</p>}
           </div>
 
           {/* Product Tags */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-semibold mb-4">Product Tags</h3>
-            <input
-              type="text"
-              placeholder="Add tags separated by commas"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <p className="text-sm text-gray-500 mb-4">Select tags for this product or create new ones</p>
+            <TagSelector
+              selectedTagIds={watch('tagIds') || []}
+              onSelectionChange={(tagIds) => setValue('tagIds', tagIds, { shouldValidate: true })}
             />
-            <p className="text-xs text-gray-500 mt-2">Separate tags with commas</p>
+            {errors.tagIds && <p className="text-red-600 text-sm mt-2">{errors.tagIds.message}</p>}
           </div>
 
         </div>

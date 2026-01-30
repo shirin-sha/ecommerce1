@@ -12,6 +12,52 @@ export interface AuthRequest extends Request {
   }
 }
 
+// Optional auth middleware - sets req.user if token is present, but doesn't fail if missing
+export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // No token provided, continue without setting req.user
+    return next()
+  }
+
+  const token = authHeader.split(' ')[1]
+  if (!token) {
+    return next()
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      id: string
+      email: string
+      role: UserRole
+    }
+
+    // Verify user still exists and is active
+    const user = await User.findById(decoded.id)
+    if (user && user.isActive) {
+      req.user = {
+        id: user._id.toString(),
+        email: user.email,
+        role: user.role,
+      }
+      // Debug logging (remove in production)
+      console.log('OptionalAuth: User authenticated', { id: req.user.id, email: req.user.email, role: req.user.role })
+    } else {
+      console.log('OptionalAuth: User not found or inactive', { userId: decoded.id })
+    }
+    // If user not found or inactive, just continue without setting req.user
+  } catch (error) {
+    // Invalid or expired token - just continue without setting req.user
+    // This allows public access even with invalid tokens
+    if (error instanceof jwt.JsonWebTokenError || error instanceof jwt.TokenExpiredError) {
+      console.log('OptionalAuth: Token error (non-fatal):', error.message)
+    }
+  }
+
+  next()
+}
+
 export const requireAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization

@@ -3,7 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose'
 export interface IAttribute extends Document {
   name: string
   slug: string
-  type: 'select'
+  type: 'select' | 'colour' | 'image' | 'button' | 'radio'
   orderBy: 'menu_order' | 'name' | 'id'
   hasArchives: boolean
   createdAt: Date
@@ -27,7 +27,7 @@ const attributeSchema = new Schema<IAttribute>(
     },
     type: {
       type: String,
-      enum: ['select'],
+      enum: ['select', 'colour', 'image', 'button', 'radio'],
       default: 'select',
     },
     orderBy: {

@@ -106,6 +106,10 @@ export default function Attributes() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="select">Select</option>
+                  <option value="colour">Colour</option>
+                  <option value="image">Image</option>
+                  <option value="button">Button</option>
+                  <option value="radio">Radio</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Determines how this attribute's values are displayed.</p>
               </div>
