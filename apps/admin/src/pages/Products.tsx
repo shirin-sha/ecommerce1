@@ -118,14 +118,7 @@ export default function Products() {
       {authDebug && (
         <div className={`mb-4 p-4 rounded-lg ${authDebug.isAdmin ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
           <div className="text-sm flex items-center justify-between">
-            <div>
-              <strong>Auth Debug:</strong> Token: {authDebug.hasToken ? '✅ Present' : '❌ Missing'} | 
-              Role: {authDebug.user?.role || 'N/A'} | 
-              Is Admin: {authDebug.isAdmin ? '✅ Yes' : '❌ No'} | 
-              Status Filter: {statusFilter}
-              {authDebug.refreshed && <span className="text-green-600 ml-2"> | Token Refreshed!</span>}
-              {authDebug.error && <span className="text-red-600"> | Error: {authDebug.error}</span>}
-            </div>
+          
             {authDebug.needsLogin && (
               <Link
                 to="/login"
