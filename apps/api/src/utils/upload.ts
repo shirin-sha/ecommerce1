@@ -74,8 +74,10 @@ export const upload = multer({
 })
 
 // Get public URL for uploaded file
+// Always return relative path - works on both local and Vercel
+// The frontend will handle prepending the correct base URL
 export const getFileUrl = (filename: string): string => {
-  // Return relative path that will be served as static file
+  // Return relative path - browser will use current domain automatically
   return `/uploads/products/${filename}`
 }
 
