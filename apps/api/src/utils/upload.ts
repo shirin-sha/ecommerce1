@@ -2,21 +2,46 @@ import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 
-// Ensure uploads directory exists
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads')
+// Determine upload directory based on environment
+// Vercel: Use /tmp (only writable directory in serverless)
+// Local: Use ./uploads
+const getUploadDir = () => {
+  if (process.env.UPLOAD_DIR) {
+    return process.env.UPLOAD_DIR
+  }
+  // Check if we're on Vercel (serverless environment)
+  if (process.env.VERCEL || process.env.VERCEL_ENV) {
+    return '/tmp/uploads'
+  }
+  // Local development
+  return path.join(process.cwd(), 'uploads')
+}
+
+const UPLOAD_DIR = getUploadDir()
 const PRODUCT_IMAGES_DIR = path.join(UPLOAD_DIR, 'products')
 
-// Create directories if they don't exist
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true })
-}
-if (!fs.existsSync(PRODUCT_IMAGES_DIR)) {
-  fs.mkdirSync(PRODUCT_IMAGES_DIR, { recursive: true })
+// Lazy directory creation - only create when needed, handle errors gracefully
+const ensureUploadDir = () => {
+  try {
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true })
+    }
+    if (!fs.existsSync(PRODUCT_IMAGES_DIR)) {
+      fs.mkdirSync(PRODUCT_IMAGES_DIR, { recursive: true })
+    }
+  } catch (error: any) {
+    // Log error but don't crash - uploads will fail gracefully
+    console.warn('⚠️ Could not create upload directory:', error.message)
+    console.warn('   Upload directory:', UPLOAD_DIR)
+    console.warn('   This is normal on Vercel if using /tmp')
+  }
 }
 
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // Ensure directory exists before saving (lazy creation)
+    ensureUploadDir()
     cb(null, PRODUCT_IMAGES_DIR)
   },
   filename: (req, file, cb) => {
