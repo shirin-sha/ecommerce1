@@ -125,7 +125,7 @@ export default function ProductDetail() {
                 <span className="text-lg text-gray-500 line-through ml-2">${product.regularPrice}</span>
               </div>
             ) : (
-              <span className="text-2xl font-bold text-blue-600">${product.regularPrice}</span>
+              <span className="text-2xl font-bold text-yellow-700">${product.regularPrice}</span>
             )}
           </div>
           {product.shortDescription && (
@@ -147,7 +147,7 @@ export default function ProductDetail() {
           ) : (
             <button
               onClick={handleAddToCart}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              className="w-full bg-yellow-500 text-gray-900 py-3 rounded-lg font-semibold hover:bg-yellow-400 transition-colors"
             >
               Add to Cart
             </button>

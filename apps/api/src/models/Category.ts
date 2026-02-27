@@ -22,7 +22,8 @@ const categorySchema = new Schema<ICategory>(
     },
     slug: {
       type: String,
-      required: true,
+      // Optional in API – when not provided, we'll auto-generate from name in the pre-save hook below
+      required: false,
       unique: true,
       lowercase: true,
       trim: true,

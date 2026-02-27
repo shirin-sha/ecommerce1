@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useCategories, useCreateCategory, useDeleteCategory } from '../hooks/useCategories'
-import { createCategorySchema, CreateCategoryInput } from '@ecommerce/shared'
+import { useCategories, useCreateCategory, useDeleteCategory, useUpdateCategory } from '../hooks/useCategories'
+import { createCategorySchema, CreateCategoryInput, Category } from '@ecommerce/shared'
+import api from '../lib/api'
 import { Plus, Search, Edit, Trash2, Image as ImageIcon } from 'lucide-react'
 
 export default function Categories() {
@@ -10,6 +11,9 @@ export default function Categories() {
   const { data: categories, isLoading } = useCategories()
   const createCategory = useCreateCategory()
   const deleteCategory = useDeleteCategory()
+  const updateCategory = useUpdateCategory()
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
 
   const {
     register,
@@ -18,12 +22,39 @@ export default function Categories() {
     reset,
   } = useForm<CreateCategoryInput>({
     resolver: zodResolver(createCategorySchema),
+    defaultValues: {
+      displayType: 'default',
+    },
   })
 
   const onSubmit = async (data: CreateCategoryInput) => {
     try {
-      await createCategory.mutateAsync(data)
-      reset()
+      // Normalize optional fields so validation/API behave as expected
+      const payload: any = {
+        ...data,
+        parentId: data.parentId || undefined,
+      }
+
+      // Attach thumbnail image if we've chosen one
+      if (thumbnailUrl !== null) {
+        payload.image = thumbnailUrl || undefined
+      }
+
+      if (editingCategory) {
+        await updateCategory.mutateAsync({ id: editingCategory._id, ...payload })
+      } else {
+        await createCategory.mutateAsync(payload)
+      }
+
+      reset({
+        name: '',
+        slug: '',
+        parentId: '',
+        description: '',
+        displayType: 'default',
+      })
+      setEditingCategory(null)
+      setThumbnailUrl(null)
     } catch (error) {
       console.error('Error creating category:', error)
     }
@@ -33,6 +64,78 @@ export default function Categories() {
     if (confirm('Are you sure you want to delete this category?')) {
       await deleteCategory.mutateAsync(id)
     }
+  }
+
+  const handleThumbnailClick = () => {
+    const input = document.getElementById('category-thumbnail-input') as HTMLInputElement | null
+    input?.click()
+  }
+
+  const handleThumbnailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB')
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const response = await api.post('/products/upload-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      if (response.data.success && response.data.data?.url) {
+        let imageUrl = response.data.data.url as string
+        if (imageUrl.startsWith('/')) {
+          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+          const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
+          imageUrl = baseUrl + imageUrl
+        }
+        setThumbnailUrl(imageUrl)
+      } else {
+        throw new Error('Upload failed')
+      }
+    } catch (error: any) {
+      console.error('Error uploading category thumbnail:', error)
+      alert(error?.response?.data?.error || 'Failed to upload thumbnail')
+    } finally {
+      e.target.value = ''
+    }
+  }
+
+  const handleEdit = (category: Category) => {
+    setEditingCategory(category)
+    reset({
+      name: category.name,
+      slug: category.slug,
+      parentId: category.parentId || '',
+      description: category.description || '',
+      displayType: category.displayType || 'default',
+    })
+    setThumbnailUrl(category.image || null)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingCategory(null)
+    reset({
+      name: '',
+      slug: '',
+      parentId: '',
+      description: '',
+      displayType: 'default',
+    })
+    setThumbnailUrl(null)
   }
 
   const filteredCategories = categories?.filter((cat) =>
@@ -47,7 +150,9 @@ export default function Categories() {
         {/* Add New Category Form */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Add New Category</h2>
+            <h2 className="text-lg font-semibold mb-4">
+              {editingCategory ? 'Edit Category' : 'Add New Category'}
+            </h2>
             <p className="text-sm text-gray-600 mb-4">
               Product categories for your store can be managed here. To change the order of categories on the
               front-end you can drag and drop to sort them.
@@ -132,20 +237,70 @@ export default function Categories() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Thumbnail</label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <ImageIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <button type="button" className="text-blue-600 hover:text-blue-800 text-sm">
-                    Upload/Add image
-                  </button>
+                  {thumbnailUrl ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <img
+                        src={thumbnailUrl}
+                        alt="Category thumbnail"
+                        className="w-16 h-16 object-cover rounded"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleThumbnailClick}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Change image
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setThumbnailUrl('')}
+                          className="text-red-600 hover:text-red-800 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <ImageIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <button
+                        type="button"
+                        onClick={handleThumbnailClick}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Upload/Add image
+                      </button>
+                    </>
+                  )}
+                  <input
+                    id="category-thumbnail-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleThumbnailChange}
+                  />
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Add New Category
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  {editingCategory ? 'Update Category' : 'Add New Category'}
+                </button>
+                {editingCategory && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
           </div>
         </div>
@@ -218,7 +373,14 @@ export default function Categories() {
                       <td className="px-6 py-4">
                         <div className="font-medium text-gray-900">{category.name}</div>
                         <div className="text-xs text-gray-500 mt-1">
-                          <button className="text-blue-600 hover:underline">Edit</button> |{' '}
+                          <button
+                            className="text-blue-600 hover:underline"
+                            type="button"
+                            onClick={() => handleEdit(category)}
+                          >
+                            Edit
+                          </button>{' '}
+                          |{' '}
                           <button className="text-blue-600 hover:underline">Quick Edit</button> |{' '}
                           <button
                             onClick={() => handleDelete(category._id)}
@@ -235,7 +397,12 @@ export default function Categories() {
                       <td className="px-6 py-4 text-sm text-gray-900">{category.count}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-2">
-                          <button className="text-blue-600 hover:text-blue-800" title="Edit">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(category)}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Edit"
+                          >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button

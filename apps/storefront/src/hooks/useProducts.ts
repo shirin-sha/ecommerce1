@@ -5,8 +5,8 @@ import { Product } from '@ecommerce/shared'
 interface ProductsParams {
   page?: number
   limit?: number
-  categoryIds?: string
-  tagIds?: string
+  category?: string
+  tag?: string
   search?: string
   featured?: boolean
   status?: string

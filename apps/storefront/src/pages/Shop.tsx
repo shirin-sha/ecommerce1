@@ -12,7 +12,7 @@ export default function Shop() {
 
   const { data: productsData, isLoading: productsLoading } = useProducts({
     limit: 20,
-    categoryIds: selectedCategory || undefined,
+    category: selectedCategory || undefined,
   })
   const { data: categories, isLoading: categoriesLoading } = useCategories()
   const { addToCart } = useCart()
@@ -46,7 +46,7 @@ export default function Shop() {
                     onClick={() => setSelectedCategory(null)}
                     className={`w-full text-left px-3 py-2 rounded ${
                       !selectedCategory
-                        ? 'bg-blue-100 text-blue-700 font-semibold'
+                        ? 'bg-yellow-100 text-yellow-800 font-semibold'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -59,7 +59,7 @@ export default function Shop() {
                       onClick={() => setSelectedCategory(category._id)}
                       className={`w-full text-left px-3 py-2 rounded ${
                         selectedCategory === category._id
-                          ? 'bg-blue-100 text-blue-700 font-semibold'
+                          ? 'bg-yellow-100 text-yellow-800 font-semibold'
                           : 'text-gray-700 hover:bg-gray-100'
                       }`}
                     >
@@ -100,7 +100,7 @@ export default function Shop() {
                     </div>
                   </Link>
                   <Link to={`/products/${product.slug}`}>
-                    <h3 className="font-semibold mb-2 hover:text-blue-600">{product.title}</h3>
+                    <h3 className="font-semibold mb-2 hover:text-yellow-700">{product.title}</h3>
                     <p className="text-gray-600 text-sm mb-2 line-clamp-2">
                       {product.shortDescription || 'No description available'}
                     </p>
@@ -115,12 +115,12 @@ export default function Shop() {
                           </span>
                         </div>
                       ) : (
-                        <span className="text-lg font-bold text-blue-600">${product.regularPrice}</span>
+                        <span className="text-lg font-bold text-yellow-700">${product.regularPrice}</span>
                       )}
                     </div>
                     <button
                       onClick={() => handleAddToCart(product)}
-                      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                      className="bg-yellow-500 text-gray-900 px-4 py-2 rounded hover:bg-yellow-400 transition-colors"
                     >
                       Add to Cart
                     </button>

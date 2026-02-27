@@ -1,10 +1,30 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
-import { createAttributeSchema, CreateAttributeInput } from '@ecommerce/shared'
 import { Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
+
+const attributeFormSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  slug: z
+    .string()
+    .max(28, 'Slug must be at most 28 characters')
+    .optional()
+    .or(z.literal('')),
+  hasArchives: z.boolean().optional(),
+  type: z
+    .enum(['select', 'colour', 'image', 'button', 'radio'])
+    .optional()
+    .default('select'),
+  orderBy: z
+    .enum(['menu_order', 'name', 'id'])
+    .optional()
+    .default('menu_order'),
+})
+
+type AttributeFormValues = z.infer<typeof attributeFormSchema>
 
 export default function Attributes() {
   const queryClient = useQueryClient()
@@ -18,7 +38,7 @@ export default function Attributes() {
   })
 
   const createAttribute = useMutation({
-    mutationFn: async (attribute: CreateAttributeInput) => {
+    mutationFn: async (attribute: AttributeFormValues) => {
       const { data } = await api.post('/attributes', attribute)
       return data
     },
@@ -32,11 +52,16 @@ export default function Attributes() {
     handleSubmit,
     formState: { errors },
     reset,
-  } = useForm<CreateAttributeInput>({
-    resolver: zodResolver(createAttributeSchema),
+  } = useForm<AttributeFormValues>({
+    resolver: zodResolver(attributeFormSchema),
+    defaultValues: {
+      type: 'select',
+      orderBy: 'menu_order',
+      hasArchives: false,
+    },
   })
 
-  const onSubmit = async (data: CreateAttributeInput) => {
+  const onSubmit = async (data: AttributeFormValues) => {
     try {
       await createAttribute.mutateAsync(data)
       reset()

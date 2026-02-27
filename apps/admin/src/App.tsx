@@ -8,6 +8,7 @@ import ProductEdit from './pages/ProductEdit'
 import Categories from './pages/Categories'
 import Tags from './pages/Tags'
 import Attributes from './pages/Attributes'
+import AttributeTerms from './pages/AttributeTerms'
 import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import Customers from './pages/Customers'
@@ -41,6 +42,7 @@ function App() {
         <Route path="products/categories" element={<Categories />} />
         <Route path="products/tags" element={<Tags />} />
         <Route path="products/attributes" element={<Attributes />} />
+        <Route path="products/attributes/:id/terms" element={<AttributeTerms />} />
         <Route path="orders" element={<Orders />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="customers" element={<Customers />} />

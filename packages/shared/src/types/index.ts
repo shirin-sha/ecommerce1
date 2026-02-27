@@ -73,6 +73,7 @@ export interface Product {
   shippingClass?: string
   categoryIds: string[]
   tagIds: string[]
+  tags?: string[]
   attributes: ProductAttribute[]
   variationIds: string[]
   avgRating: number

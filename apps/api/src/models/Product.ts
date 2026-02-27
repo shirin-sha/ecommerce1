@@ -32,6 +32,7 @@ export interface IProduct extends Document {
   shippingClass?: string
   categoryIds: mongoose.Types.ObjectId[]
   tagIds: mongoose.Types.ObjectId[]
+  tags?: string[]
   attributes: {
     attributeId: mongoose.Types.ObjectId
     name: string
@@ -158,6 +159,10 @@ const productSchema = new Schema<IProduct>(
         ref: 'Tag',
       },
     ],
+    tags: {
+      type: [String],
+      default: [],
+    },
     attributes: [
       {
         attributeId: {

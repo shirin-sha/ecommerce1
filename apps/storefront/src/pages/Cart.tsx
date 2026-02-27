@@ -8,7 +8,7 @@ export default function Cart() {
         <div className="lg:col-span-2">
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-600">Your cart is empty</p>
-            <Link to="/shop" className="text-blue-600 hover:underline mt-4 inline-block">
+            <Link to="/shop" className="text-yellow-700 hover:underline mt-4 inline-block">
               Continue Shopping
             </Link>
           </div>
@@ -30,7 +30,7 @@ export default function Cart() {
                 <span>$0.00</span>
               </div>
             </div>
-            <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700">
+            <button className="w-full bg-yellow-500 text-gray-900 py-3 rounded-lg font-semibold hover:bg-yellow-400">
               Proceed to Checkout
             </button>
           </div>

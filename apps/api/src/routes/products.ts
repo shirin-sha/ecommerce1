@@ -3,8 +3,6 @@ import * as productController from '../controllers/productController'
 import * as variationController from '../controllers/variationController'
 import * as uploadController from '../controllers/uploadController'
 import { requireAuth, requireShopManager, optionalAuth } from '../middleware/auth'
-import { validate } from '../middleware/validate'
-import { createProductSchema, updateProductSchema, saveAttributesSchema } from '@ecommerce/shared'
 import { upload } from '../utils/upload'
 
 const router = Router()
@@ -15,9 +13,8 @@ router.get('/slug/:slug', optionalAuth, productController.getProductBySlug)
 router.get('/:id', optionalAuth, productController.getProduct)
 
 // Protected routes (Admin/Shop Manager)
-router.post('/', requireAuth, requireShopManager, validate(createProductSchema), productController.createProduct)
-router.patch('/:id', requireAuth, requireShopManager, validate(updateProductSchema), productController.updateProduct)
-router.patch('/:id/attributes', requireAuth, requireShopManager, validate(saveAttributesSchema), productController.saveProductAttributes)
+router.post('/', requireAuth, requireShopManager, productController.createProduct)
+router.patch('/:id', requireAuth, requireShopManager, productController.updateProduct)
 router.delete('/:id', requireAuth, requireShopManager, productController.deleteProduct)
 
 // Upload routes

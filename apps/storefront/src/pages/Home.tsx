@@ -25,13 +25,13 @@ export default function Home() {
   return (
     <div>
       {/* Hero Section */}
-      <section className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20">
+      <section className="bg-gradient-to-r from-yellow-300 to-yellow-500 text-gray-900 py-20">
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-5xl font-bold mb-4">Welcome to E-Commerce</h1>
           <p className="text-xl mb-8">Discover amazing products at great prices</p>
           <Link
             to="/shop"
-            className="inline-block bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+            className="inline-block bg-white text-yellow-700 px-8 py-3 rounded-lg font-semibold hover:bg-yellow-50 transition-colors"
           >
             Shop Now
           </Link>
@@ -48,12 +48,28 @@ export default function Home() {
             {featuredCategories.map((category) => (
               <Link
                 key={category._id}
-                to={`/shop?category=${category.slug}`}
-                className="bg-gray-200 rounded-lg h-64 flex items-center justify-center hover:bg-gray-300 transition-colors"
+                to={`/shop?category=${category._id}`}
+                className="group rounded-lg overflow-hidden shadow hover:shadow-lg transition-shadow bg-gray-100"
               >
-                <div className="text-center">
-                  <p className="text-gray-800 text-xl font-semibold">{category.name}</p>
-                  <p className="text-gray-600 text-sm mt-2">{category.description}</p>
+                <div className="relative h-64 md:h-80 bg-gray-200">
+                  {category.image ? (
+                    <img
+                      src={category.image}
+                      alt={category.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                      No Image
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                  <div className="absolute bottom-3 left-4 right-4 text-white">
+                    <p className="text-lg font-semibold">{category.name}</p>
+                    {category.description && (
+                      <p className="text-xs text-gray-200 mt-1 line-clamp-2">{category.description}</p>
+                    )}
+                  </div>
                 </div>
               </Link>
             ))}
@@ -89,7 +105,7 @@ export default function Home() {
                     </div>
                   </Link>
                   <Link to={`/products/${product.slug}`}>
-                    <h3 className="font-semibold mb-2 hover:text-blue-600">{product.title}</h3>
+                    <h3 className="font-semibold mb-2 hover:text-yellow-700">{product.title}</h3>
                     <p className="text-gray-600 text-sm mb-2 line-clamp-2">
                       {product.shortDescription || 'No description available'}
                     </p>
@@ -104,12 +120,12 @@ export default function Home() {
                           </span>
                         </div>
                       ) : (
-                        <span className="text-lg font-bold text-blue-600">${product.regularPrice}</span>
+                        <span className="text-lg font-bold text-yellow-700">${product.regularPrice}</span>
                       )}
                     </div>
                     <button
                       onClick={() => handleAddToCart(product)}
-                      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                      className="bg-yellow-500 text-gray-900 px-4 py-2 rounded hover:bg-yellow-400 transition-colors"
                     >
                       Add to Cart
                     </button>

@@ -1,23 +1,16 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm, useFieldArray, Control, UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
+
 import { useQueryClient } from '@tanstack/react-query'
-import { useProduct, useCreateProduct, useUpdateProduct } from '../hooks/useProducts'
-import { useAttributes, useAttributeTerms } from '../hooks/useAttributes'
-import { useCategories } from '../hooks/useCategories'
-import { useTags, useCreateTag } from '../hooks/useTags'
-import { createProductSchema, CreateProductInput, Product, Variation, Category } from '@ecommerce/shared'
+import { useProduct } from '../hooks/useProducts'
+import { useAttributes, useAttributeTerms, useCreateAttributeTerm } from '../hooks/useAttributes'
+import { useCategories, useCreateCategory } from '../hooks/useCategories'
+import { useTags } from '../hooks/useTags'
+import { Product, Variation, Category, Tag } from '@ecommerce/shared'
 import { Save, Eye, Info, Plus, X, Trash2, Upload, Image as ImageIcon, ArrowLeft, ArrowRight, ChevronRight, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import api from '../lib/api'
-import {
-  useCreateVariation,
-  useDeleteVariation,
-  useGenerateVariations,
-  useUpdateVariation,
-  useVariations,
-} from '../hooks/useVariations'
+// Variation hooks are currently not used – variations are managed locally in the form
 
 // Product Image Upload Component
 interface ProductImageUploadProps {
@@ -624,185 +617,193 @@ function CategoryTreeSelector({ selectedCategoryIds, onSelectionChange }: Catego
 
 // Tag Selector Component
 interface TagSelectorProps {
-  selectedTagIds: string[]
-  onSelectionChange: (tagIds: string[]) => void
+  selectedTags: string[]
+  onSelectionChange: (tags: string[]) => void
 }
 
-function TagSelector({ selectedTagIds, onSelectionChange }: TagSelectorProps) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [newTagInput, setNewTagInput] = useState('')
-  const { data: allTags, isLoading } = useTags(searchQuery)
-  const createTag = useCreateTag()
+function TagSelector({ selectedTags, onSelectionChange }: TagSelectorProps) {
+  const [inputValue, setInputValue] = useState('')
+  const { data: allTags, isLoading } = useTags()
+  const [localTags, setLocalTags] = useState<Tag[]>([])
 
-  const handleToggleTag = (tagId: string) => {
-    const newSelection = [...selectedTagIds]
-    const index = newSelection.indexOf(tagId)
-    
+  const handleToggleTag = (tagName: string) => {
+    const lower = tagName.toLowerCase()
+    const newSelection = [...selectedTags]
+    const index = newSelection.findIndex((t) => t.toLowerCase() === lower)
+
     if (index > -1) {
       newSelection.splice(index, 1)
     } else {
-      newSelection.push(tagId)
+      newSelection.push(tagName)
     }
-    
+
     onSelectionChange(newSelection)
   }
 
-  const handleCreateTag = async () => {
-    const tagName = newTagInput.trim()
-    if (!tagName) return
+  const combinedTags = [...(allTags || []), ...localTags]
 
-    // Check if tag already exists
-    const existingTag = allTags?.find(t => t.name.toLowerCase() === tagName.toLowerCase())
-    if (existingTag) {
-      // If exists, just select it
-      if (!selectedTagIds.includes(existingTag._id)) {
-        handleToggleTag(existingTag._id)
+  const handleAddFromInput = () => {
+    const value = inputValue.trim()
+    if (!value) return
+
+    // Split by commas, trim each, drop empties
+    const names = value
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0)
+
+    if (names.length === 0) return
+
+    const nextSelected = [...selectedTags]
+    const nextLocalTags = [...localTags]
+
+    for (const name of names) {
+      const existingTag = combinedTags.find((t) => t.name.toLowerCase() === name.toLowerCase())
+      if (existingTag) {
+        if (!nextSelected.some((n) => n.toLowerCase() === existingTag.name.toLowerCase())) {
+          nextSelected.push(existingTag.name)
+        }
+        continue
       }
-      setNewTagInput('')
-      return
+
+      const newTag: Tag = {
+        _id: `temp-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+        name,
+        slug: '',
+        description: '',
+        count: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      nextLocalTags.push(newTag)
+      nextSelected.push(newTag.name)
     }
 
-    try {
-      const result = await createTag.mutateAsync({ name: tagName })
-      const newTagId = result.data?._id || result._id
-      if (newTagId) {
-        onSelectionChange([...selectedTagIds, newTagId])
-      }
-      setNewTagInput('')
-    } catch (error: any) {
-      console.error('Error creating tag:', error)
-      alert(error?.response?.data?.error || 'Failed to create tag')
-    }
+    setLocalTags(nextLocalTags)
+    onSelectionChange(nextSelected)
+    setInputValue('')
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      handleCreateTag()
+      handleAddFromInput()
     }
   }
 
-  const filteredTags = allTags?.filter(tag =>
-    tag.name.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || []
+  // Sort tags by count desc to mimic “most used” cloud
+  const sortedTags =
+    combinedTags.slice().sort((a, b) => {
+      const ac = a.count ?? 0
+      const bc = b.count ?? 0
+      return bc - ac
+    }) || []
 
   return (
     <div className="space-y-3">
-      {/* Search and Create */}
-      <div className="space-y-2">
+      {/* Input like WooCommerce: "Separate tags with commas" */}
+      <div className="flex gap-2 items-center">
         <input
           type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search tags..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Separate tags with commas"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
         />
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newTagInput}
-            onChange={(e) => setNewTagInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Add new tag"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          />
-          <button
-            type="button"
-            onClick={handleCreateTag}
-            disabled={!newTagInput.trim() || createTag.isPending}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-1 text-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Add
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleAddFromInput}
+          disabled={!inputValue.trim()}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
+        >
+          Add
+        </button>
       </div>
 
-      {/* Tags List */}
-      <div className="border border-gray-300 rounded-lg max-h-64 overflow-y-auto bg-white">
+      {/* Selected tags like chips with remove icon */}
+      {selectedTags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedTags.map((tagName) => {
+            const tag =
+              combinedTags.find((t) => t.name.toLowerCase() === tagName.toLowerCase()) ||
+              ({ name: tagName } as Partial<Tag>)
+            return tag && tag.name ? (
+              <span
+                key={tagName}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs"
+              >
+                {tag.name}
+                <button
+                  type="button"
+                  onClick={() => handleToggleTag(tag.name!)}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : null
+          })}
+        </div>
+      )}
+
+      {/* Most used tags cloud */}
+      <div className="mt-2">
+        <p className="text-xs text-gray-600 mb-2">Choose from the most used tags</p>
         {isLoading ? (
-          <div className="p-4 text-sm text-gray-500 text-center">Loading tags...</div>
-        ) : filteredTags.length === 0 ? (
-          <div className="p-4 text-sm text-gray-500 text-center">
-            {searchQuery ? (
-              <>No tags found matching "{searchQuery}"</>
-            ) : (
-              <>
-                No tags available. <a href="/tags" className="text-blue-600 hover:underline">Create tags first</a>
-              </>
-            )}
+          <div className="text-xs text-gray-500">Loading tags...</div>
+        ) : sortedTags.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            No tags available. Create some tags first.
           </div>
         ) : (
-          <div className="p-2">
-            {filteredTags.map(tag => {
-              const isSelected = selectedTagIds.includes(tag._id)
+          <div className="flex flex-wrap gap-2">
+            {sortedTags.map((tag) => {
+              const isSelected = selectedTags.some(
+                (n) => n.toLowerCase() === tag.name.toLowerCase()
+              )
               return (
-                <label
+                <button
                   key={tag._id}
-                  className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-50 rounded cursor-pointer"
+                  type="button"
+                  onClick={() => handleToggleTag(tag.name)}
+                  className={`text-xs underline ${
+                    isSelected ? 'text-blue-700 font-semibold' : 'text-blue-600'
+                  }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => handleToggleTag(tag._id)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 flex-1">{tag.name}</span>
-                  {tag.count !== undefined && tag.count > 0 && (
-                    <span className="text-xs text-gray-500">({tag.count})</span>
-                  )}
-                </label>
+                  {tag.name}
+                </button>
               )
             })}
           </div>
         )}
       </div>
-      
-      {/* Selected Tags Summary */}
-      {selectedTagIds.length > 0 && (
-        <div className="border-t border-gray-200 p-3 bg-gray-50">
-          <p className="text-xs text-gray-600 mb-2">
-            <strong>{selectedTagIds.length}</strong> tag{selectedTagIds.length === 1 ? '' : 's'} selected
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {selectedTagIds.map(tagId => {
-              const tag = allTags?.find(t => t._id === tagId)
-              return tag ? (
-                <span
-                  key={tagId}
-                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs"
-                >
-                  {tag.name}
-                  <button
-                    type="button"
-                    onClick={() => handleToggleTag(tagId)}
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ) : null
-            })}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
 
 // Product Attributes Tab Component
-interface ProductAttributesTabProps {
+interface ProductAttributesTabProps<TFormValues> {
   productType: 'simple' | 'variable'
-  register: UseFormRegister<CreateProductInput>
-  watch: UseFormWatch<CreateProductInput>
-  setValue: UseFormSetValue<CreateProductInput>
-  control: Control<CreateProductInput>
+  register: UseFormRegister<TFormValues>
+  watch: UseFormWatch<TFormValues>
+  setValue: UseFormSetValue<TFormValues>
+  control: Control<TFormValues>
   product?: Product
   onSave?: () => void
 }
 
-function ProductAttributesTab({ productType, register, watch, setValue, control, product, onSave }: ProductAttributesTabProps) {
+function ProductAttributesTab<TFormValues>({
+  productType,
+  register,
+  watch,
+  setValue,
+  control,
+  product,
+  onSave,
+}: ProductAttributesTabProps<TFormValues>) {
   const { data: allAttributes } = useAttributes()
+  const createAttributeTerm = useCreateAttributeTerm()
   const [selectedAttributeId, setSelectedAttributeId] = useState<string>('')
   const [newValueInputs, setNewValueInputs] = useState<Record<string, string>>({})
 
@@ -811,7 +812,7 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
     name: 'attributes',
   })
 
-  const currentAttributes = (watch('attributes') as CreateProductInput['attributes']) || []
+  const currentAttributes = (watch('attributes') as any[]) || []
 
   const handleAddAttribute = () => {
     if (!selectedAttributeId) return
@@ -843,7 +844,7 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
     setSelectedAttributeId('')
   }
 
-  const handleAddValue = (attributeIndex: number, attributeId: string) => {
+  const handleAddValue = async (attributeIndex: number, attributeId: string) => {
     const valueInput = newValueInputs[attributeId]?.trim()
     if (!valueInput) return
 
@@ -856,6 +857,18 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
     const newValues = [...currentValues, valueInput]
     setValue(`attributes.${attributeIndex}.values`, newValues)
     setNewValueInputs({ ...newValueInputs, [attributeId]: '' })
+
+    // Also create a persistent term for this attribute so it can be reused later
+    if (attributeId) {
+      try {
+        await createAttributeTerm.mutateAsync({
+          attributeId,
+          term: { name: valueInput },
+        })
+      } catch (error) {
+        console.error('Failed to create attribute term from value input', error)
+      }
+    }
   }
 
   const handleRemoveValue = (attributeIndex: number, valueIndex: number) => {
@@ -864,30 +877,88 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
     setValue(`attributes.${attributeIndex}.values`, newValues)
   }
 
-  // Load attribute terms for suggestions
-  const AttributeTermsSuggestions = ({ attributeId, currentValues, onAddValue }: { attributeId: string; currentValues: string[]; onAddValue: (value: string) => void }) => {
+  // Attribute terms selector - Woo-style value chips with Select all / Select none / Create value
+  const AttributeTermsSelector = ({
+    attributeId,
+    attributeIndex,
+  }: {
+    attributeId: string
+    attributeIndex: number
+  }) => {
     const { data: attributeTerms } = useAttributeTerms(attributeId)
+    const currentValues: string[] = (watch(`attributes.${attributeIndex}.values` as any) as any[]) || []
 
-    if (!attributeTerms || attributeTerms.length === 0) return null
+    const handleSelectAll = () => {
+      if (!attributeTerms) return
+      const allNames = attributeTerms.map((t) => t.name)
+      setValue(`attributes.${attributeIndex}.values` as any, allNames as any)
+    }
 
-    const availableTerms = attributeTerms.filter((term) => !currentValues.includes(term.name))
+    const handleSelectNone = () => {
+      setValue(`attributes.${attributeIndex}.values` as any, [] as any)
+    }
 
-    if (availableTerms.length === 0) return null
+    const toggleValue = (name: string) => {
+      const exists = currentValues.includes(name)
+      const next = exists ? currentValues.filter((v) => v !== name) : [...currentValues, name]
+      setValue(`attributes.${attributeIndex}.values` as any, next as any)
+    }
+
+    // Merge terms from API with any ad-hoc values so new values also show as chips immediately
+    const valueNames = new Set<string>()
+    if (attributeTerms) {
+      attributeTerms.forEach((t) => valueNames.add(t.name))
+    }
+    currentValues.forEach((v) => valueNames.add(v))
+    const allValueNames = Array.from(valueNames)
 
     return (
-      <div className="mt-3">
-        <p className="text-xs text-gray-500 mb-2">Suggested terms from attribute:</p>
-        <div className="flex flex-wrap gap-2">
-          {availableTerms.map((term) => (
-            <button
-              key={term._id}
-              type="button"
-              onClick={() => onAddValue(term.name)}
-              className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200"
-            >
-              + {term.name}
-            </button>
-          ))}
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2 border border-gray-300 rounded-lg px-3 py-2 min-h-[42px]">
+          {allValueNames.length === 0 && (
+            <span className="text-xs text-gray-500">No values defined yet.</span>
+          )}
+          {allValueNames.map((name) => {
+            const selected = currentValues.includes(name)
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => toggleValue(name)}
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs border ${
+                  selected
+                    ? 'bg-gray-200 text-gray-800 border-gray-400'
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <span className="mr-1">×</span>
+                {name}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs mt-1">
+          <button
+            type="button"
+            className="px-2 py-1 border border-gray-300 rounded bg-gray-50 hover:bg-gray-100"
+            onClick={handleSelectAll}
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            className="px-2 py-1 border border-gray-300 rounded bg-gray-50 hover:bg-gray-100"
+            onClick={handleSelectNone}
+          >
+            Select none
+          </button>
+          <button
+            type="button"
+            className="text-blue-600 hover:underline"
+            onClick={() => handleAddValue(attributeIndex, attributeId)}
+          >
+            Create value
+          </button>
         </div>
       </div>
     )
@@ -934,12 +1005,13 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
 
       {/* Add Attribute Section */}
       <div className="border border-gray-200 rounded-lg p-4">
-        <h3 className="font-medium mb-3">Add Attribute</h3>
-        <div className="flex gap-2">
+        <h3 className="font-medium mb-3">Add attribute</h3>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-gray-700 font-medium">Add existing:</span>
           <select
             value={selectedAttributeId}
             onChange={(e) => setSelectedAttributeId(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[220px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select an attribute...</option>
             {allAttributes
@@ -967,6 +1039,25 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
             <Plus className="w-4 h-4" />
             Add
           </button>
+
+          <span className="text-sm text-gray-500 mx-1">or</span>
+
+          <button
+            type="button"
+            onClick={() =>
+              append({
+                attributeId: '',
+                name: '',
+                values: [],
+                usedForVariations: productType === 'variable',
+                visibleOnProductPage: true,
+                position: currentAttributes.length,
+              })
+            }
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Add new
+          </button>
         </div>
         {allAttributes?.length === 0 && (
           <p className="text-sm text-gray-500 mt-2">
@@ -983,19 +1074,35 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
       ) : (
         <div className="space-y-4">
           {fields.map((field, index) => {
-            const attribute = currentAttributes[index]
-            const valueInput = newValueInputs[attribute?.attributeId || ''] || ''
+          const attribute = currentAttributes[index]
+          const valueKey = (attribute?.attributeId as string) || field.id
+          const valueInput = newValueInputs[valueKey] || ''
 
             return (
               <div key={field.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
-                    <h4 className="font-medium text-gray-900">{attribute?.name}</h4>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Attribute ID: {typeof attribute?.attributeId === 'object' && attribute?.attributeId !== null
-                        ? (attribute.attributeId as any)._id || String(attribute.attributeId)
-                        : String(attribute?.attributeId || '')}
-                    </p>
+                    {attribute?.attributeId ? (
+                      <>
+                        <h4 className="font-medium text-gray-900">{attribute?.name}</h4>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Attribute: existing global attribute
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h4 className="font-medium text-gray-900">New attribute</h4>
+                        <div className="mt-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+                          <input
+                            type="text"
+                            {...register(`attributes.${index}.name` as any)}
+                            placeholder="e.g., size or color"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1007,99 +1114,89 @@ function ProductAttributesTab({ productType, register, watch, setValue, control,
                   </button>
                 </div>
 
-                {/* Attribute Options */}
-                <div className="space-y-3 mb-4">
+                {/* Options + Values Section */}
+                <div className="space-y-4">
                   <div className="flex items-center gap-4">
                     <label className="flex items-center">
                       <input
                         type="checkbox"
-                        {...register(`attributes.${index}.usedForVariations`)}
+                        {...register(`attributes.${index}.visibleOnProductPage` as any)}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
-                      <span className="ml-2 text-sm text-gray-700">Used for variations</span>
+                      <span className="ml-2 text-sm text-gray-700">Visible on the product page</span>
                     </label>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        {...register(`attributes.${index}.visibleOnProductPage`)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <span className="ml-2 text-sm text-gray-700">Visible on product page</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Values Section */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Values</label>
-
-                  {/* Add Value Input */}
-                  <div className="flex gap-2 mb-3">
-                    <input
-                      type="text"
-                      value={valueInput}
-                      onChange={(e) =>
-                        setNewValueInputs({ ...newValueInputs, [attribute?.attributeId || '']: e.target.value })
-                      }
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          handleAddValue(index, attribute?.attributeId || '')
-                        }
-                      }}
-                      placeholder="Enter value (e.g., Small, Red, Cotton)"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleAddValue(index, attribute?.attributeId || '')}
-                      className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-1 text-sm"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add
-                    </button>
+                    {productType === 'variable' && (
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          {...register(`attributes.${index}.usedForVariations` as any)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Used for variations</span>
+                      </label>
+                    )}
                   </div>
 
-                  {/* Values List */}
-                  {attribute?.values && attribute.values.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {attribute.values.map((value: any, valueIndex: number) => {
-                        // Handle case where value might be an object instead of string
-                        const displayValue = typeof value === 'object' && value !== null
-                          ? (value.name || value._id || String(value))
-                          : String(value || '')
-                        return (
-                          <span
-                            key={valueIndex}
-                            className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                          >
-                            {displayValue}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveValue(index, valueIndex)}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        )
-                      })}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="block text-sm font-medium text-gray-700">Value(s)</span>
+                      {attribute?.attributeId && (
+                        <span className="text-xs text-gray-500">
+                          Select from existing terms or create a new value.
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">No values added yet. Add values above.</p>
-                  )}
 
-                  {/* Suggested Terms from Attribute */}
-                  <AttributeTermsSuggestions
-                    attributeId={attribute?.attributeId || ''}
-                    currentValues={attribute?.values || []}
-                    onAddValue={(value) => {
-                      const currentValues = attribute?.values || []
-                      if (!currentValues.includes(value)) {
-                        setValue(`attributes.${index}.values`, [...currentValues, value])
-                      }
-                    }}
-                  />
+                    {attribute?.attributeId ? (
+                      <>
+                        {/* Existing attribute: show Woo-style selector tied to terms */}
+                        <AttributeTermsSelector attributeId={attribute.attributeId} attributeIndex={index} />
+
+                        {/* Hidden input bound to form values for submission */}
+                        <input
+                          type="hidden"
+                          {...register(`attributes.${index}.values` as any)}
+                        />
+
+                        {/* Inline new value input used when clicking "Create value" */}
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            type="text"
+                            value={valueInput}
+                            onChange={(e) =>
+                              setNewValueInputs({ ...newValueInputs, [valueKey]: e.target.value })
+                            }
+                            placeholder="New value name"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddValue(index, attribute.attributeId)}
+                            className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
+                          >
+                            Add value
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      // Fallback: free-form values if attributeId is missing
+                      <div>
+                        <textarea
+                          value={(attribute?.values || []).join(' | ')}
+                          onChange={(e) => {
+                            const parts = e.target.value
+                              .split('|')
+                              .map((p) => p.trim())
+                              .filter(Boolean)
+                            setValue(`attributes.${index}.values`, parts as any)
+                          }}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          placeholder="Enter some descriptive text. Use “|” to separate different values."
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -1131,21 +1228,21 @@ function ProductVariationsTab({
   product,
   productId,
   onSaveProduct,
+  attributesForVariations,
 }: {
   product?: Product
   productId: string
   onSaveProduct?: () => void
+  attributesForVariations: any[]
 }) {
-  const { data: variations, isLoading } = useVariations(productId)
-  const generateVariations = useGenerateVariations()
-  const createVariation = useCreateVariation()
-  const updateVariation = useUpdateVariation()
-  const deleteVariation = useDeleteVariation()
-
   const variationAttributes =
-    product?.attributes?.filter((a) => a.usedForVariations && Array.isArray(a.values) && a.values.length > 0) || []
+    attributesForVariations?.filter(
+      (a) => a.usedForVariations && Array.isArray(a.values) && a.values.length > 0
+    ) || []
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [showBulkPrice, setShowBulkPrice] = useState(false)
+  const [bulkPrice, setBulkPrice] = useState<string>('')
 
   const {
     register,
@@ -1163,52 +1260,104 @@ function ProductVariationsTab({
     name: 'variations',
   })
 
-  useEffect(() => {
-    if (!variations) return
-    const normalized: VariationFormItem[] = variations.map((v) => ({
-      ...v,
-      manageStock: typeof v.stockQty === 'number',
-      attributeSelections: (v.attributeSelections || {}) as any,
-    }))
-    reset({ variations: normalized })
-
-    const initExpanded: Record<string, boolean> = {}
-    normalized.slice(0, 2).forEach((v) => {
-      initExpanded[v._id] = true
-    })
-    setExpanded((prev) => ({ ...prev, ...initExpanded }))
-  }, [variations, reset])
-
   const variationsValues = watch('variations') || []
 
-  const handleRegenerate = async () => {
-    if (!productId) return
-    try {
-      await generateVariations.mutateAsync(productId)
-    } catch (e: any) {
-      alert(e?.response?.data?.details || e?.response?.data?.error || 'Failed to generate variations')
+  const handleApplyBulkPrice = () => {
+    if (!variationsValues.length) {
+      alert('There are no variations to update.')
+      return
     }
+
+    const value = parseFloat(bulkPrice)
+    if (isNaN(value) || value < 0) {
+      alert('Please enter a valid price.')
+      return
+    }
+
+    variationsValues.forEach((_, idx) => {
+      setValue(`variations.${idx}.regularPrice` as any, value, { shouldDirty: true })
+    })
+
+    setShowBulkPrice(false)
   }
 
-  const handleAddManual = async () => {
-    if (!product) return
+  const handleRegenerate = () => {
+    if (variationAttributes.length === 0) {
+      alert('Add attribute values (and mark them "Used for variations") before generating variations.')
+      return
+    }
+
+    // Build all combinations of attribute values (cartesian product)
+    const sources = variationAttributes.map((attr) => ({
+      name: attr.name,
+      values: (attr.values || []) as string[],
+    }))
+
+    const combos: Record<string, string>[] = []
+
+    const build = (index: number, current: Record<string, string>) => {
+      if (index === sources.length) {
+        combos.push({ ...current })
+        return
+      }
+      const src = sources[index]
+      if (!src.values.length) {
+        build(index + 1, current)
+        return
+      }
+      src.values.forEach((val) => {
+        current[src.name] = val
+        build(index + 1, current)
+      })
+    }
+
+    build(0, {})
+
+    const generated: VariationFormItem[] = combos.map((combo, idx) => ({
+      _id: `temp-${Date.now()}-${idx}`,
+      attributeSelections: combo as any,
+      status: 'active',
+      regularPrice: product?.regularPrice,
+      stockStatus: product?.stockStatus || 'in_stock',
+      manageStock: false,
+    })) as any
+
+    reset({ variations: generated })
+
+    const initExpanded: Record<string, boolean> = {}
+    generated.slice(0, 2).forEach((v) => {
+      initExpanded[v._id] = true
+    })
+    setExpanded(initExpanded)
+  }
+
+  const handleAddManual = () => {
     if (variationAttributes.length === 0) {
       alert('Add attribute values (and mark them "Used for variations") before creating variations.')
       return
     }
+
     const attributeSelections: Record<string, string> = {}
     for (const attr of variationAttributes) {
-      attributeSelections[attr.name] = attr.values[0]
+      const firstValue = (attr.values || [])[0]
+      if (firstValue) {
+        attributeSelections[attr.name] = firstValue
+      }
     }
-    await createVariation.mutateAsync({
-      productId: product._id,
-      variation: {
-        attributeSelections,
-        regularPrice: product.regularPrice,
-        stockStatus: product.stockStatus,
-        status: 'active',
-      } as any,
-    })
+
+    const current = variationsValues || []
+    const newVar: VariationFormItem = {
+      _id: `temp-${Date.now()}-${current.length}`,
+      attributeSelections: attributeSelections as any,
+      status: 'active',
+      regularPrice: product?.regularPrice,
+      stockStatus: product?.stockStatus || 'in_stock',
+      manageStock: false,
+    } as any
+
+    const next = [...current, newVar]
+    reset({ variations: next })
+    setExpanded((prev) => ({ ...prev, [newVar._id]: true }))
   }
 
   const onSaveVariations = async (values: { variations: VariationFormItem[] }) => {
@@ -1241,7 +1390,8 @@ function ProductVariationsTab({
         const cleanedWeight = v.weight !== undefined && !isNaN(v.weight) ? v.weight : undefined
         const cleanedStockQty = v.stockQty !== undefined && !isNaN(v.stockQty) ? v.stockQty : undefined
 
-        const patch: Partial<Variation> = {
+        // For now, just normalize values locally; variation save API is disabled.
+        const normalized: Partial<Variation> = {
           sku: v.sku,
           barcode: v.barcode,
           image: v.image,
@@ -1258,38 +1408,18 @@ function ProductVariationsTab({
           attributeSelections: v.attributeSelections,
           stockQty: v.manageStock ? cleanedStockQty : undefined,
         }
-        await updateVariation.mutateAsync({ productId, varId: v._id, patch })
-      }
-      alert('Variations saved')
-    } catch (e: any) {
-      alert(e?.response?.data?.details || e?.response?.data?.error || 'Failed to save variations')
-    }
-  }
 
-  if (!product) {
-    return (
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 space-y-3">
-        <div>
-          <strong>Variations need a saved product.</strong> You’re still on “Add New Product”, so there’s no product ID
-          yet.
-        </div>
-        <div className="text-gray-600">
-          Fill <strong>Product Name</strong>, add attributes + values, then save. After that you can click{' '}
-          <strong>Regenerate variations</strong>.
-        </div>
-        {onSaveProduct && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onSaveProduct}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Save & load variations
-            </button>
-          </div>
-        )}
-      </div>
-    )
+        // Update local form state
+        setValue(`variations.${values.variations.indexOf(v)}` as any, {
+          ...v,
+          ...normalized,
+        } as any)
+      }
+      alert('Variations saved in the form. API calls are disabled for now.')
+    } catch (e: any) {
+      console.error('Error normalizing variations', e)
+      alert('Failed to save variations in the form.')
+    }
   }
 
   // Check for variations without prices
@@ -1308,7 +1438,45 @@ function ProductVariationsTab({
               <option>No default</option>
             </select>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowBulkPrice((prev) => !prev)}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            Add price to all variations
+          </button>
         </div>
+
+        {showBulkPrice && (
+          <div className="mb-4 flex items-center gap-2">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={bulkPrice}
+              onChange={(e) => setBulkPrice(e.target.value)}
+              className="w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              placeholder="Enter price"
+            />
+            <button
+              type="button"
+              onClick={handleApplyBulkPrice}
+              className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowBulkPrice(false)
+                setBulkPrice('')
+              }}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
@@ -1357,8 +1525,6 @@ function ProductVariationsTab({
             </p>
           </div>
         </div>
-      ) : isLoading ? (
-        <div className="text-sm text-gray-600">Loading variations...</div>
       ) : fields.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
           <div className="text-center py-8">
@@ -1462,20 +1628,22 @@ function ProductVariationsTab({
                     )}
                     <button
                       type="button"
-                      onClick={async () => {
+                      onClick={() => {
                         if (!confirm('Delete this variation?')) return
-                        await deleteVariation.mutateAsync({ productId, varId: v._id })
+                        const current = variationsValues || []
+                        const remaining = current.filter((_, i) => i !== idx)
+                        reset({ variations: remaining })
+                        setExpanded((prev) => {
+                          const copy = { ...prev }
+                          if (v?._id) {
+                            delete (copy as any)[v._id]
+                          }
+                          return copy
+                        })
                       }}
                       className="text-sm text-red-600 hover:underline"
                     >
                       Remove
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setExpanded((prev) => ({ ...prev, [v._id]: !isOpen }))}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      Edit
                     </button>
                   </div>
                 </div>
@@ -1845,15 +2013,15 @@ function ProductVariationsTab({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => reset()}
+                onClick={() => setExpanded({})}
                 className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
-                type="submit"
+                type="button"
+                onClick={() => handleSubmit(onSaveVariations)()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                disabled={generateVariations.isPending || updateVariation.isPending}
               >
                 Save changes
               </button>
@@ -1870,14 +2038,53 @@ export default function ProductEdit() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const isNew = !id
+  const [showSchedulePublish, setShowSchedulePublish] = useState(false)
+  const [scheduledDate, setScheduledDate] = useState<string>('')
+  const [scheduledTime, setScheduledTime] = useState<string>('')
 
   const { data: product, isLoading, refetch } = useProduct(id || '')
   const queryClient = useQueryClient()
-  const createProduct = useCreateProduct()
-  const updateProduct = useUpdateProduct()
 
-  // Convert Product to CreateProductInput format (Date -> string)
-  const getDefaultValues = (): CreateProductInput => {
+  // Local product form values type (decoupled from shared API schema)
+  type ProductFormValues = {
+    title?: string
+    slug?: string
+    status?: 'draft' | 'published' | 'private'
+    visibility?: 'visible' | 'catalog' | 'search' | 'hidden'
+    featured?: boolean
+    shortDescription?: string
+    description?: string
+    featuredImage?: string
+    gallery?: string[]
+    regularPrice?: number
+    salePrice?: number
+    saleStart?: string
+    saleEnd?: string
+    type?: 'simple' | 'variable'
+    sku?: string
+    barcode?: string
+    soldIndividually?: boolean
+    manageStock?: boolean
+    stockQty?: number
+    stockStatus?: 'in_stock' | 'out_of_stock' | 'backorder'
+    lowStockThreshold?: number
+    backorderPolicy?: 'no' | 'notify' | 'allow'
+    weight?: number
+    dimensions?: {
+      length?: number
+      width?: number
+      height?: number
+    }
+    shippingClass?: string
+    categoryIds?: string[]
+    tags?: string[]
+    attributes?: any[]
+    metaTitle?: string
+    metaDescription?: string
+  }
+
+  // Convert Product to ProductFormValues format (Date -> string)
+  const getDefaultValues = (): ProductFormValues => {
     if (!product) {
       return {
         title: '',
@@ -1892,10 +2099,33 @@ export default function ProductEdit() {
         manageStock: false,
         stockStatus: 'in_stock',
         categoryIds: [],
-        tagIds: [],
+        tags: [],
         attributes: [],
       }
     }
+
+    const normalizeIdArray = (ids: any[] | undefined | null): string[] => {
+      if (!ids) return []
+      return ids
+        .map((v: any) => {
+          if (!v) return null
+          if (typeof v === 'string') return v
+          if (typeof v === 'object' && v._id) return String(v._id)
+          return String(v)
+        })
+        .filter((v: any): v is string => typeof v === 'string' && v.trim() !== '')
+    }
+
+    const tagNames: string[] =
+      (product as any).tags && Array.isArray((product as any).tags)
+        ? (product as any).tags
+        : Array.isArray((product as any).tagIds)
+        ? (product as any).tagIds
+            .map((t: any) =>
+              t && typeof t === 'object' && t.name ? t.name : typeof t === 'string' ? t : null
+            )
+            .filter((n: any): n is string => typeof n === 'string' && n.trim() !== '')
+        : []
 
     return {
       title: product.title,
@@ -1909,8 +2139,9 @@ export default function ProductEdit() {
       gallery: product.gallery || [],
       regularPrice: product.regularPrice,
       salePrice: product.salePrice,
-      saleStart: product.saleStart?.toISOString(),
-      saleEnd: product.saleEnd?.toISOString(),
+      // Convert sale dates to YYYY-MM-DD strings for date inputs
+      saleStart: product.saleStart ? product.saleStart.toISOString().slice(0, 10) : undefined,
+      saleEnd: product.saleEnd ? product.saleEnd.toISOString().slice(0, 10) : undefined,
       type: product.type,
       sku: product.sku,
       barcode: product.barcode,
@@ -1922,8 +2153,8 @@ export default function ProductEdit() {
       weight: product.weight,
       dimensions: product.dimensions,
       shippingClass: product.shippingClass,
-      categoryIds: product.categoryIds,
-      tagIds: product.tagIds,
+      categoryIds: normalizeIdArray(product.categoryIds as any),
+      tags: tagNames,
       attributes: product.attributes || [],
       metaTitle: product.metaTitle,
       metaDescription: product.metaDescription,
@@ -1939,24 +2170,9 @@ export default function ProductEdit() {
     control,
     setValue,
     setFocus,
-  } = useForm<CreateProductInput>({
-    resolver: zodResolver(
-      createProductSchema.extend({
-        // Make title optional - we'll validate it manually based on status
-        title: z.string().optional(),
-      }).superRefine((data, ctx) => {
-        // For draft products, allow empty title (will be auto-generated)
-        // Only require title when publishing or updating existing product
-        if (data.status !== 'draft' && (!data.title || data.title.trim() === '')) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Product title is required when publishing',
-            path: ['title'],
-          })
-        }
-      })
-    ),
-    mode: 'onSubmit', // Only validate on submit, not on change
+  } = useForm<ProductFormValues>({
+    // No shared Zod schema here; simple local validation in onSubmit
+    mode: 'onSubmit',
     defaultValues: getDefaultValues(),
   })
 
@@ -1975,6 +2191,8 @@ export default function ProductEdit() {
   // If all fields are empty, set dimensions to undefined
   // Otherwise, keep the dimensions object with only the filled fields
   const dimensions = watch('dimensions')
+  const saleStart = watch('saleStart')
+  const saleEnd = watch('saleEnd')
   useEffect(() => {
     if (dimensions) {
       const { length, width, height } = dimensions
@@ -1997,6 +2215,53 @@ export default function ProductEdit() {
 
   const productType = (watch('type') || 'simple') as 'simple' | 'variable'
   type ProductDataTab = 'general' | 'inventory' | 'shipping' | 'linked' | 'attributes' | 'variations' | 'advanced'
+
+  const [showSaleSchedule, setShowSaleSchedule] = useState<boolean>(false)
+
+  // Categories quick-add state for sidebar
+  const { data: sidebarCategories } = useCategories()
+  const createCategory = useCreateCategory()
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryParentId, setNewCategoryParentId] = useState('')
+
+  const handleQuickAddCategory = async () => {
+    const name = newCategoryName.trim()
+    if (!name) {
+      alert('Category name is required')
+      return
+    }
+
+    try {
+      const payload: any = { name }
+      if (newCategoryParentId) {
+        payload.parentId = newCategoryParentId
+      }
+
+      const result: any = await createCategory.mutateAsync(payload)
+      const created = result?.data || result
+      const newId: string | undefined = created?._id
+
+      if (newId) {
+        const current = (watch('categoryIds') || []) as string[]
+        if (!current.includes(newId)) {
+          setValue('categoryIds', [...current, newId], { shouldDirty: true })
+        }
+      }
+
+      setNewCategoryName('')
+      setNewCategoryParentId('')
+    } catch (error: any) {
+      console.error('Error creating category from product form:', error)
+      alert(error?.response?.data?.error || 'Failed to create category')
+    }
+  }
+
+  // If product already has sale dates, auto-open the schedule section
+  useEffect(() => {
+    if (saleStart || saleEnd) {
+      setShowSaleSchedule(true)
+    }
+  }, [saleStart, saleEnd])
 
   const getDefaultTab = (type: 'simple' | 'variable'): ProductDataTab =>
     type === 'variable' ? 'inventory' : 'general'
@@ -2021,8 +2286,7 @@ export default function ProductEdit() {
     }
   }, [productType, activeTab])
 
-  const onSubmit = async (data: CreateProductInput, opts?: { stay?: boolean; nextTab?: ProductDataTab }) => {
-    console.log('onSubmit called with data:', { title: data.title, type: data.type, regularPrice: data.regularPrice })
+  const onSubmit = async (data: ProductFormValues, opts?: { stay?: boolean; nextTab?: ProductDataTab }) => {
     try {
       // Clean up dimensions object - if all fields are undefined, set dimensions to undefined
       // Otherwise, keep only the fields that have values
@@ -2151,70 +2415,58 @@ export default function ProductEdit() {
         Object.assign(data, restData)
       }
 
-      // Log the data being sent for debugging
-      console.log('Saving product with data:', {
-        isNew,
-        title: data.title,
-        type: data.type,
-        regularPrice: data.regularPrice,
-        attributes: data.attributes,
-        dimensions: data.dimensions,
-      })
+      // Build publish schedule info for API:
+      // - mode: 'immediate' or 'scheduled'
+      // - publishAt: ISO datetime when scheduled, or undefined for immediate
+      let publishMode: 'immediate' | 'scheduled' = 'immediate'
+      let publishAt: string | undefined
+      if (scheduledDate) {
+        publishMode = 'scheduled'
+        const time = scheduledTime && scheduledTime.trim() ? scheduledTime : '00:00'
+        const localIso = new Date(`${scheduledDate}T${time}:00`).toISOString()
+        publishAt = localIso
+      }
+
+      const payload = {
+        ...data,
+        publishSchedule: {
+          mode: publishMode,
+          date: scheduledDate || null,
+          time: scheduledTime || null,
+          publishAt,
+        },
+      }
+
+      console.log('Product payload to send to API:', { isNew, payload })
 
       if (isNew) {
-        try {
-          const result: any = await createProduct.mutateAsync(data)
-          console.log('Product created successfully:', result)
-          const newId: string | undefined = result?.data?._id || result?.data?.product?._id
-          
-          if (!newId) {
-            console.error('No product ID returned from API:', result)
-            alert('Product was created but no ID was returned. Please check the product list.')
-            return
-          }
-          
-          if (opts?.stay && newId) {
-            const next = opts?.nextTab ? `?tab=${opts.nextTab}` : ''
-            navigate(`/products/${newId}/edit${next}`)
-            return
-          }
-          navigate('/products')
-        } catch (createError: any) {
-          console.error('Error creating product:', createError)
-          const errorMessage = createError?.response?.data?.error || 
-                              createError?.response?.data?.details || 
-                              createError?.message || 
-                              'Failed to create product'
-          alert(`Failed to create product: ${errorMessage}`)
-          throw createError // Re-throw to be caught by outer catch
+        const response = await api.post('/products', payload)
+        const created = response.data?.data || response.data
+
+        // Refresh product list cache
+        queryClient.invalidateQueries({ queryKey: ['products'] })
+
+        // Show success message
+        alert('Product created successfully.')
+
+        // Navigate to edit page for the new product unless caller wants to stay
+        if (!opts?.stay && created?._id) {
+          navigate(`/products/${created._id}`)
         }
-      } else {
-        try {
-          await updateProduct.mutateAsync({ id: id!, ...data })
-          console.log('Product updated successfully')
-          
-          if (opts?.stay) {
-            if (opts?.nextTab) setTab(opts.nextTab)
-            return
-          }
-          navigate('/products')
-        } catch (updateError: any) {
-          console.error('Error updating product:', updateError)
-          const errorMessage = updateError?.response?.data?.error || 
-                              updateError?.response?.data?.details || 
-                              updateError?.message || 
-                              'Failed to update product'
-          alert(`Failed to update product: ${errorMessage}`)
-          throw updateError // Re-throw to be caught by outer catch
-        }
+      } else if (id) {
+        // Update existing product
+        const response = await api.patch(`/products/${id}`, payload)
+        const updated = response.data?.data || response.data
+
+        // Refresh caches for this product and the list
+        queryClient.invalidateQueries({ queryKey: ['product', id] })
+        queryClient.invalidateQueries({ queryKey: ['products'] })
+
+        console.log('Product updated:', updated)
+        alert('Product updated successfully.')
       }
-    } catch (error: any) {
-      console.error('Error saving product:', error)
-      // Only show alert if it wasn't already shown in the inner catch blocks
-      if (!error?.response) {
-        const errorMessage = error?.message || 'An unexpected error occurred while saving the product'
-        alert(`Error: ${errorMessage}`)
-      }
+    } catch (error) {
+      console.error('Error while preparing product payload:', error)
     }
   }
 
@@ -2271,48 +2523,34 @@ export default function ProductEdit() {
   }
 
   // Save only attributes (like WooCommerce save_attributes action)
+  // Here "save" just means validate + normalize them into the main form state.
+  // No separate API call – attributes will be sent when the main product is saved.
   const saveAttributesOnly = async () => {
-    if (!product?._id) {
-      alert('Please save the product first before adding attributes')
-      return
-    }
-
     try {
-      const attributes = watch('attributes') || []
-      const productType = watch('type') || 'simple'
-      
-      // Prepare attributes data (convert attributeId to string if it's an object)
-      const attributesData = attributes.map((attr) => ({
-        attributeId: typeof attr.attributeId === 'object' && attr.attributeId !== null
-          ? (attr.attributeId as any)._id || String(attr.attributeId)
-          : String(attr.attributeId || ''),
-        name: attr.name,
-        values: attr.values || [],
-        usedForVariations: attr.usedForVariations || false,
-        visibleOnProductPage: attr.visibleOnProductPage !== false,
-        position: attr.position || 0,
-      }))
+      await handleSubmit(
+        (data) => {
+          const rawAttributes = (data as any).attributes || []
+          const normalized = rawAttributes.map((attr: any, index: number) => ({
+            attributeId:
+              typeof attr.attributeId === 'object' && attr.attributeId !== null
+                ? (attr.attributeId as any)._id || String(attr.attributeId)
+                : String(attr.attributeId || ''),
+            name: attr.name,
+            values: Array.isArray(attr.values) ? attr.values : [],
+            usedForVariations: !!attr.usedForVariations,
+            visibleOnProductPage: attr.visibleOnProductPage !== false,
+            position: attr.position ?? index,
+          }))
 
-      const response = await api.patch(`/products/${product._id}/attributes`, {
-        attributes: attributesData,
-        type: productType, // Also save product type
-      })
-
-      if (response.data.success) {
-        alert('Attributes saved successfully')
-        // Invalidate and refetch product data to update UI
-        if (product?._id) {
-          await queryClient.invalidateQueries({ queryKey: ['product', product._id] })
-          await refetch()
-          // Update form type value if it changed
-          if (response.data.data?.type) {
-            setValue('type', response.data.data.type)
-          }
+          setValue('attributes', normalized as any, { shouldDirty: true })
+          alert('Attributes saved into the product form. Click Update/Publish to send them to the API.')
+        },
+        () => {
+          alert('Please fix validation errors before saving attributes.')
         }
-      }
+      )()
     } catch (error: any) {
-      console.error('Error saving attributes:', error)
-      alert(error?.response?.data?.error || error?.response?.data?.message || 'Failed to save attributes')
+      console.error('Error preparing attributes:', error)
     }
   }
 
@@ -2493,18 +2731,7 @@ export default function ProductEdit() {
                 {activeTab === 'general' && productType !== 'variable' && (
                   <div className="space-y-4">
                     <div className="flex gap-6">
-                      <div className="flex items-center">
-                        <input type="checkbox" id="virtual" className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" disabled />
-                        <label htmlFor="virtual" className="ml-2 text-sm text-gray-700">
-                          Virtual <span className="text-gray-400 text-xs">(Coming soon)</span>
-                        </label>
-                      </div>
-                      <div className="flex items-center">
-                        <input type="checkbox" id="downloadable" className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" disabled />
-                        <label htmlFor="downloadable" className="ml-2 text-sm text-gray-700">
-                          Downloadable <span className="text-gray-400 text-xs">(Coming soon)</span>
-                        </label>
-                      </div>
+                    
                     </div>
 
                     <div>
@@ -2535,6 +2762,33 @@ export default function ProductEdit() {
                   min="0"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowSaleSchedule((prev) => !prev)}
+                  className="mt-1 text-xs text-blue-600 hover:underline"
+                >
+                  {showSaleSchedule ? 'Cancel schedule' : 'Schedule'}
+                </button>
+                {showSaleSchedule && (
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Sale start date</label>
+                      <input
+                        {...register('saleStart')}
+                        type="date"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Sale end date</label>
+                      <input
+                        {...register('saleEnd')}
+                        type="date"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
                     </div>
@@ -2557,7 +2811,6 @@ export default function ProductEdit() {
                           {...register('sku')}
                           type="text"
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="e.g., PRODUCT-001"
                         />
                       </div>
                       <div>
@@ -2566,9 +2819,20 @@ export default function ProductEdit() {
                           {...register('barcode')}
                           type="text"
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="e.g., 0123456789012"
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Stock status</label>
+                      <select
+                        {...register('stockStatus')}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="in_stock">In stock</option>
+                        <option value="out_of_stock">Out of stock</option>
+                        <option value="backorder">On backorder</option>
+                      </select>
                     </div>
 
               <div className="space-y-4">
@@ -2584,35 +2848,25 @@ export default function ProductEdit() {
                   </label>
                 </div>
 
-                {watch('manageStock') && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
-                      <input
-                        {...register('stockQty', {
-                          setValueAs: (v) => {
-                            if (v === '' || v === null || v === undefined || isNaN(Number(v))) return undefined
-                            return Number(v)
-                          },
-                        })}
-                        type="number"
-                        min="0"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Stock Status</label>
-                      <select
-                        {...register('stockStatus')}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="in_stock">In stock</option>
-                        <option value="out_of_stock">Out of stock</option>
-                        <option value="backorder">On backorder</option>
-                      </select>
-                    </div>
+                    {watch('manageStock') && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Low Stock Threshold</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
+                            <input
+                              {...register('stockQty', {
+                                setValueAs: (v) => {
+                                  if (v === '' || v === null || v === undefined || isNaN(Number(v))) return undefined
+                                  return Number(v)
+                                },
+                              })}
+                              type="number"
+                              min="0"
+                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Low stock threshold</label>
                             <input
                               {...register('lowStockThreshold', {
                                 setValueAs: (v) => {
@@ -2626,7 +2880,41 @@ export default function ProductEdit() {
                             />
                           </div>
                         </div>
-                      )}
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Allow backorders?</label>
+                          <div className="space-y-2">
+                            <label className="flex items-center text-sm text-gray-700">
+                              <input
+                                {...register('backorderPolicy')}
+                                type="radio"
+                                value="no"
+                                className="w-4 h-4 text-blue-600 border-gray-300"
+                              />
+                              <span className="ml-2">Do not allow</span>
+                            </label>
+                            <label className="flex items-center text-sm text-gray-700">
+                              <input
+                                {...register('backorderPolicy')}
+                                type="radio"
+                                value="notify"
+                                className="w-4 h-4 text-blue-600 border-gray-300"
+                              />
+                              <span className="ml-2">Allow, but notify customer</span>
+                            </label>
+                            <label className="flex items-center text-sm text-gray-700">
+                              <input
+                                {...register('backorderPolicy')}
+                                type="radio"
+                                value="allow"
+                                className="w-4 h-4 text-blue-600 border-gray-300"
+                              />
+                              <span className="ml-2">Allow</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                       <div className="flex items-center">
                         <input
@@ -2742,7 +3030,8 @@ export default function ProductEdit() {
                     setValue={setValue}
                     control={control}
                     product={product}
-                    onSave={product?._id ? saveAttributesOnly : () => saveAndStay('attributes')}
+                    // Save attributes only updates form state; it does not call any API.
+                    onSave={saveAttributesOnly}
                   />
                 )}
 
@@ -2752,6 +3041,7 @@ export default function ProductEdit() {
                     product={product}
                     productId={product?._id || id || ''}
                     onSaveProduct={() => saveAndStay('variations')}
+                    attributesForVariations={(watch('attributes') as any[]) || []}
                   />
                 )}
 
@@ -2787,22 +3077,91 @@ export default function ProductEdit() {
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-semibold mb-4">Publish</h3>
             <div className="space-y-4">
+              {/* Status */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
                   {...register('status')}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="draft">Draft</option>
                   <option value="published">Published</option>
                   <option value="private">Private</option>
                 </select>
               </div>
+
+              {/* Publish immediately / schedule */}
+              <div className="text-sm text-gray-700">
+                <span className="mr-1">Publish</span>
+                {!showSchedulePublish ? (
+                  <>
+                    {scheduledDate ? (
+                      <>
+                        <span className="font-semibold">
+                          scheduled for {scheduledDate}
+                          {scheduledTime ? ` ${scheduledTime}` : ''}
+                        </span>{' '}
+                      </>
+                    ) : (
+                      <span className="font-semibold">immediately</span>
+                    )}{' '}
+                    <button
+                      type="button"
+                      onClick={() => setShowSchedulePublish(true)}
+                      className="text-blue-600 hover:underline text-xs"
+                    >
+                      Edit
+                    </button>
+                  </>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        value={scheduledDate}
+                        onChange={(e) => setScheduledDate(e.target.value)}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs flex-1"
+                      />
+                      <input
+                        type="time"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs w-28"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // For now just close the editor; scheduling logic can be wired to API later
+                          setShowSchedulePublish(false)
+                        }}
+                        className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                      >
+                        OK
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowSchedulePublish(false)
+                          setScheduledDate('')
+                          setScheduledTime('')
+                        }}
+                        className="px-3 py-1 bg-white border border-gray-300 rounded text-xs hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Visibility */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Visibility</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Visibility</label>
                 <select
                   {...register('visibility')}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="visible">Visible</option>
                   <option value="catalog">Catalog</option>
@@ -2810,6 +3169,8 @@ export default function ProductEdit() {
                   <option value="hidden">Hidden</option>
                 </select>
               </div>
+
+              {/* Featured */}
               <div className="flex items-center">
                 <input
                   {...register('featured')}
@@ -2854,6 +3215,47 @@ export default function ProductEdit() {
               onSelectionChange={(categoryIds) => setValue('categoryIds', categoryIds, { shouldValidate: true })}
             />
             {errors.categoryIds && <p className="text-red-600 text-sm mt-2">{errors.categoryIds.message}</p>}
+
+            {/* Quick add category */}
+            <div className="mt-4 border-t pt-4">
+              <p className="text-xs text-gray-600 mb-2">Add new category</p>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Parent category</label>
+                  <select
+                    value={newCategoryParentId}
+                    onChange={(e) => setNewCategoryParentId(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs"
+                  >
+                    <option value="">None</option>
+                    {(sidebarCategories || [])
+                      .filter((cat) => !cat.parentId)
+                      .map((cat) => (
+                        <option key={cat._id} value={cat._id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="Category name"
+                    className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleQuickAddCategory}
+                    disabled={!newCategoryName.trim() || createCategory.isPending}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Product Tags */}
@@ -2861,10 +3263,10 @@ export default function ProductEdit() {
             <h3 className="font-semibold mb-4">Product Tags</h3>
             <p className="text-sm text-gray-500 mb-4">Select tags for this product or create new ones</p>
             <TagSelector
-              selectedTagIds={watch('tagIds') || []}
-              onSelectionChange={(tagIds) => setValue('tagIds', tagIds, { shouldValidate: true })}
+              selectedTags={watch('tags') || []}
+              onSelectionChange={(tags) => setValue('tags', tags, { shouldValidate: true })}
             />
-            {errors.tagIds && <p className="text-red-600 text-sm mt-2">{errors.tagIds.message}</p>}
+            {errors.tags && <p className="text-red-600 text-sm mt-2">{errors.tags.message}</p>}
           </div>
 
         </div>

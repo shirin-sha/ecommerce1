@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
-import { Product, CreateProductInput, UpdateProductInput } from '@ecommerce/shared'
+import { Product } from '@ecommerce/shared'
 
 interface ProductsParams {
   page?: number
@@ -34,33 +34,6 @@ export const useProduct = (id: string) => {
       return data.data as Product
     },
     enabled: !!id,
-  })
-}
-
-export const useCreateProduct = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (product: CreateProductInput) => {
-      const { data } = await api.post('/products', product)
-      return data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-    },
-  })
-}
-
-export const useUpdateProduct = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, ...product }: { id: string } & UpdateProductInput) => {
-      const { data } = await api.patch(`/products/${id}`, product)
-      return data
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['product', variables.id] })
-    },
   })
 }
 

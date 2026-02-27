@@ -1,4 +1,5 @@
 import { Request, Response } from 'express'
+import path from 'path'
 import { getFileUrl } from '../utils/upload'
 
 export const uploadProductImage = async (req: Request, res: Response) => {
@@ -10,7 +11,11 @@ export const uploadProductImage = async (req: Request, res: Response) => {
       })
     }
 
-    const fileUrl = getFileUrl(req.file.filename)
+    // Get the full path to the uploaded file
+    const filePath = path.join(req.file.destination, req.file.filename)
+    
+    // Upload to Blob Storage if on Vercel, or return local path
+    const fileUrl = await getFileUrl(req.file.filename, filePath)
 
     res.json({
       success: true,

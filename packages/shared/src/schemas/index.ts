@@ -46,94 +46,7 @@ export const addressSchema = z.object({
   phone: z.string().optional(),
 })
 
-// Product schemas
-export const createProductSchema = z.object({
-  title: z.string().min(1, 'Product title is required'),
-  slug: z.string().optional(),
-  status: z.enum(['draft', 'published', 'private']).default('draft'),
-  visibility: z.enum(['visible', 'catalog', 'search', 'hidden']).default('visible'),
-  featured: z.boolean().default(false),
-  shortDescription: z.string().optional(),
-  description: z.string().optional(),
-  featuredImage: z.string().url().optional(),
-  gallery: z.array(z.string().url()).optional().default([]),
-  regularPrice: z.number().min(0, 'Price must be positive'),
-  salePrice: z.number().min(0).optional(),
-  saleStart: z.string().datetime().optional(),
-  saleEnd: z.string().datetime().optional(),
-  type: z.enum(['simple', 'variable']).default('simple'),
-  sku: z.string().optional(),
-  barcode: z.string().optional(),
-  soldIndividually: z.boolean().default(false),
-  manageStock: z.boolean().default(false),
-  stockQty: z.number().int().min(0).optional(),
-  stockStatus: z.enum(['in_stock', 'out_of_stock', 'backorder']).default('in_stock'),
-  lowStockThreshold: z.number().int().min(0).optional(),
-  weight: z.number().min(0).optional(),
-  dimensions: z
-    .object({
-      length: z.number().min(0).optional(),
-      width: z.number().min(0).optional(),
-      height: z.number().min(0).optional(),
-    })
-    .optional(),
-  shippingClass: z.string().optional(),
-  categoryIds: z.array(z.string()).default([]),
-  tagIds: z.array(z.string()).default([]),
-  attributes: z
-    .array(
-      z.object({
-        attributeId: z.string(),
-        name: z.string(),
-        values: z.array(z.string()),
-        usedForVariations: z.boolean().default(false),
-        visibleOnProductPage: z.boolean().default(true),
-        position: z.number().int().default(0),
-      })
-    )
-    .optional()
-    .default([]),
-  metaTitle: z.string().optional(),
-  metaDescription: z.string().optional(),
-})
-
-// Update schema - all fields optional
-// Title is optional for updates - empty strings are allowed (will be handled in controller)
-// Attributes schema is more lenient for updates to handle various data formats
-export const updateProductSchema = createProductSchema.partial().extend({
-  title: z.string().or(z.literal('')).optional(),
-  attributes: z
-    .array(
-      z.object({
-        attributeId: z.union([z.string(), z.any()]).optional(), // Allow string or any (for object conversion)
-        name: z.string().optional(), // Make name optional
-        values: z.array(z.union([z.string(), z.any()])).optional().default([]), // Allow any values and make optional
-        usedForVariations: z.boolean().optional().default(false),
-        visibleOnProductPage: z.boolean().optional().default(true),
-        position: z.number().int().optional().default(0),
-      })
-    )
-    .optional()
-    .default([]),
-})
-
-// Schema for saving only attributes (like WooCommerce)
-export const saveAttributesSchema = z.object({
-  attributes: z
-    .array(
-      z.object({
-        attributeId: z.string(),
-        name: z.string(),
-        values: z.array(z.string()),
-        usedForVariations: z.boolean().default(false),
-        visibleOnProductPage: z.boolean().default(true),
-        position: z.number().int().default(0),
-      })
-    )
-    .optional()
-    .default([]),
-  type: z.enum(['simple', 'variable']).optional(), // Also save product type
-})
+// Product schemas have been removed while product APIs/forms are being redesigned.
 
 // Category schemas
 export const createCategorySchema = z.object({
@@ -141,6 +54,7 @@ export const createCategorySchema = z.object({
   slug: z.string().optional(),
   parentId: z.string().optional(),
   description: z.string().optional(),
+  image: z.string().optional(),
   displayType: z.enum(['default', 'products', 'subcategories', 'both']).default('default'),
   sortOrder: z.number().int().default(0),
 })
@@ -225,8 +139,6 @@ export const createOrderSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
-export type CreateProductInput = z.infer<typeof createProductSchema>
-export type UpdateProductInput = z.infer<typeof updateProductSchema>
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>
 export type CreateTagInput = z.infer<typeof createTagSchema>
