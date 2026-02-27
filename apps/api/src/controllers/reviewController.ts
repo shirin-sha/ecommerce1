@@ -139,13 +139,15 @@ export const createReview = asyncHandler(async (req: AuthRequest, res: Response)
     isVerifiedOwner = !!hasOrder
   }
 
+  const authUser: any = req.user || {}
+
   const review = await Review.create({
     productId,
-    customerId: req.user?.id,
+    customerId: authUser.id,
     rating,
     content,
-    authorName: req.user?.name || authorName,
-    authorEmail: req.user?.email || authorEmail,
+    authorName: authUser.name || authorName,
+    authorEmail: authUser.email || authorEmail,
     status: 'pending', // Requires moderation
     isVerifiedOwner,
   })

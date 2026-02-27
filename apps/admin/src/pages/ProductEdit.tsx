@@ -783,17 +783,17 @@ function TagSelector({ selectedTags, onSelectionChange }: TagSelectorProps) {
 }
 
 // Product Attributes Tab Component
-interface ProductAttributesTabProps<TFormValues> {
+interface ProductAttributesTabProps {
   productType: 'simple' | 'variable'
-  register: UseFormRegister<TFormValues>
-  watch: UseFormWatch<TFormValues>
-  setValue: UseFormSetValue<TFormValues>
-  control: Control<TFormValues>
+  register: UseFormRegister<any>
+  watch: UseFormWatch<any>
+  setValue: UseFormSetValue<any>
+  control: Control<any>
   product?: Product
   onSave?: () => void
 }
 
-function ProductAttributesTab<TFormValues>({
+function ProductAttributesTab({
   productType,
   register,
   watch,
@@ -801,7 +801,7 @@ function ProductAttributesTab<TFormValues>({
   control,
   product,
   onSave,
-}: ProductAttributesTabProps<TFormValues>) {
+}: ProductAttributesTabProps) {
   const { data: allAttributes } = useAttributes()
   const createAttributeTerm = useCreateAttributeTerm()
   const [selectedAttributeId, setSelectedAttributeId] = useState<string>('')
@@ -869,12 +869,6 @@ function ProductAttributesTab<TFormValues>({
         console.error('Failed to create attribute term from value input', error)
       }
     }
-  }
-
-  const handleRemoveValue = (attributeIndex: number, valueIndex: number) => {
-    const currentValues = currentAttributes[attributeIndex]?.values || []
-    const newValues = currentValues.filter((_, idx) => idx !== valueIndex)
-    setValue(`attributes.${attributeIndex}.values`, newValues)
   }
 
   // Attribute terms selector - Woo-style value chips with Select all / Select none / Create value
@@ -1235,6 +1229,9 @@ function ProductVariationsTab({
   onSaveProduct?: () => void
   attributesForVariations: any[]
 }) {
+  // Mark currently unused props as used to satisfy TypeScript's noUnusedLocals
+  void productId
+  void onSaveProduct
   const variationAttributes =
     attributesForVariations?.filter(
       (a) => a.usedForVariations && Array.isArray(a.values) && a.values.length > 0
@@ -1305,7 +1302,7 @@ function ProductVariationsTab({
         build(index + 1, current)
         return
       }
-      src.values.forEach((val) => {
+      src.values.forEach((val: string) => {
         current[src.name] = val
         build(index + 1, current)
       })
@@ -1772,7 +1769,7 @@ function ProductVariationsTab({
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           >
                             <option value="">Select {attr.name}...</option>
-                            {attr.values.map((val) => (
+                            {attr.values.map((val: string) => (
                               <option key={val} value={val}>
                                 {val}
                               </option>
@@ -2042,7 +2039,7 @@ export default function ProductEdit() {
   const [scheduledDate, setScheduledDate] = useState<string>('')
   const [scheduledTime, setScheduledTime] = useState<string>('')
 
-  const { data: product, isLoading, refetch } = useProduct(id || '')
+  const { data: product, isLoading } = useProduct(id || '')
   const queryClient = useQueryClient()
 
   // Local product form values type (decoupled from shared API schema)

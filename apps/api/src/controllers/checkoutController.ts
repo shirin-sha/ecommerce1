@@ -159,7 +159,7 @@ export const createOrder = asyncHandler(async (req: AuthRequest, res: Response) 
     if (coupon) {
       coupon.usageCount += 1
       if (customerId) {
-        const existingUser = coupon.usedBy.find((u) => u.userId?.toString() === customerId)
+        const existingUser = coupon.usedBy.find((u: any) => u.userId?.toString() === customerId)
         if (existingUser) {
           existingUser.orderIds.push(order._id as any)
         } else {

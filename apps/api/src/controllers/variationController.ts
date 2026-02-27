@@ -47,7 +47,7 @@ export const generateVariations = asyncHandler(async (req: AuthRequest, res: Res
   }
 
   // Get attributes used for variations
-  const variationAttributes = product.attributes.filter((attr) => attr.usedForVariations)
+  const variationAttributes = product.attributes.filter((attr: any) => attr.usedForVariations)
 
   if (variationAttributes.length === 0) {
     throw new AppError('No attributes configured for variations', 400)
@@ -62,7 +62,7 @@ export const generateVariations = asyncHandler(async (req: AuthRequest, res: Res
       return
     }
 
-    const attr = remainingAttrs[index]
+    const attr: any = remainingAttrs[index]
     const values: string[] = Array.isArray(attr.values) ? attr.values : []
 
     for (const value of values) {
@@ -178,7 +178,7 @@ export const deleteVariation = asyncHandler(async (req: AuthRequest, res: Respon
   // Remove from product's variationIds
   const product = await Product.findById(id)
   if (product) {
-    product.variationIds = product.variationIds.filter((vid) => vid.toString() !== varId)
+    product.variationIds = product.variationIds.filter((vid: any) => vid.toString() !== varId)
     await product.save()
   }
 

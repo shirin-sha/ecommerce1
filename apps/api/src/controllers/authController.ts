@@ -1,5 +1,5 @@
 import { Response } from 'express'
-import jwt from 'jsonwebtoken'
+import jwt, { SignOptions } from 'jsonwebtoken'
 import crypto from 'crypto'
 import { User } from '../models/User'
 import { AppError, asyncHandler } from '../middleware/errorHandler'
@@ -8,16 +8,23 @@ import { JWT_ACCESS_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } from '../config/constan
 
 // Generate JWT access token
 const generateAccessToken = (userId: string, email: string, role: string) => {
-  return jwt.sign({ id: userId, email, role }, process.env.JWT_SECRET!, {
-    expiresIn: JWT_ACCESS_EXPIRES_IN,
-  })
+  const payload = { id: userId, email, role }
+  const secret = process.env.JWT_SECRET as string
+  const options: SignOptions = {
+    // Cast to any to satisfy jsonwebtoken's StringValue type without leaking env type issues
+    expiresIn: JWT_ACCESS_EXPIRES_IN as any,
+  }
+  return jwt.sign(payload, secret, options)
 }
 
 // Generate JWT refresh token
 const generateRefreshToken = (userId: string) => {
-  return jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET!, {
-    expiresIn: JWT_REFRESH_EXPIRES_IN,
-  })
+  const payload = { id: userId }
+  const secret = process.env.JWT_REFRESH_SECRET as string
+  const options: SignOptions = {
+    expiresIn: JWT_REFRESH_EXPIRES_IN as any,
+  }
+  return jwt.sign(payload, secret, options)
 }
 
 // Set refresh token cookie
@@ -141,7 +148,7 @@ export const logout = asyncHandler(async (req: AuthRequest, res: Response) => {
     // Remove refresh token from user
     const user = await User.findById(req.user.id).select('+refreshTokens')
     if (user) {
-      user.refreshTokens = (user.refreshTokens || []).filter((token) => token !== refreshToken)
+      user.refreshTokens = (user.refreshTokens || []).filter((token: string) => token !== refreshToken)
       await user.save()
     }
   }
