@@ -258,9 +258,6 @@ export const forgotPassword = asyncHandler(async (req: AuthRequest, res: Respons
   // TODO: Store resetTokenHash and expiry in user model
   // TODO: Send email with reset link
 
-  console.log('Password reset token:', resetToken)
-  console.log('Reset link:', `${process.env.FRONTEND_URL}/reset-password/${resetToken}`)
-
   res.json({
     success: true,
     message: 'If an account with that email exists, a password reset link has been sent',

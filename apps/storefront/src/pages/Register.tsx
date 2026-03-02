@@ -8,7 +8,7 @@ export default function Register() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Register:', name, email, password)
+    // TODO: Implement registration call to API
   }
 
   return (

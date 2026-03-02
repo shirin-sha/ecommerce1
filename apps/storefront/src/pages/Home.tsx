@@ -3,6 +3,20 @@ import { useProducts } from '../hooks/useProducts'
 import { useCategories } from '../hooks/useCategories'
 import { useCart } from '../context/CartContext'
 
+// Helper to build full image URL from relative paths using API base from env
+const getImageUrl = (imagePath?: string): string | undefined => {
+  if (!imagePath) return undefined
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  if (imagePath.startsWith('/')) {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+    const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
+    return baseUrl + imagePath
+  }
+  return imagePath
+}
+
 export default function Home() {
   const { data: productsData, isLoading: productsLoading } = useProducts({ featured: true, limit: 4 })
   const { data: categories, isLoading: categoriesLoading } = useCategories()
@@ -54,7 +68,7 @@ export default function Home() {
                 <div className="relative h-64 md:h-80 bg-gray-200">
                   {category.image ? (
                     <img
-                      src={category.image}
+                      src={getImageUrl(category.image)}
                       alt={category.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
@@ -93,7 +107,7 @@ export default function Home() {
                     <div className="bg-gray-200 rounded-lg h-48 mb-4 overflow-hidden">
                       {product.featuredImage ? (
                         <img
-                          src={product.featuredImage}
+                          src={getImageUrl(product.featuredImage)}
                           alt={product.title}
                           className="w-full h-full object-cover"
                         />

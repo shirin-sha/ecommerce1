@@ -63,15 +63,8 @@ function ProductImageUpload({ currentImage, onImageUploaded, onImageRemoved }: P
       })
 
       if (response.data.success && response.data.data?.url) {
-        // Get full URL - if it's a relative path, prepend API base URL
-        let imageUrl = response.data.data.url
-        if (imageUrl.startsWith('/')) {
-          // Get API base URL (without /api/v1)
-          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
-          const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
-          // Construct full URL pointing to API server
-          imageUrl = baseUrl + imageUrl
-        }
+        // Store the URL exactly as returned by the API (relative or absolute).
+        const imageUrl = response.data.data.url
         onImageUploaded(imageUrl)
       } else {
         throw new Error('Upload failed')
@@ -198,12 +191,7 @@ function ProductGalleryUpload({ images, onImagesChange }: ProductGalleryUploadPr
           })
 
           if (response.data.success && response.data.data?.url) {
-            let imageUrl = response.data.data.url
-            if (imageUrl.startsWith('/')) {
-              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
-              const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
-              imageUrl = baseUrl + imageUrl
-            }
+            const imageUrl = response.data.data.url
             uploadedUrls.push(imageUrl)
           } else {
             throw new Error('Upload failed')
@@ -2434,32 +2422,26 @@ export default function ProductEdit() {
         },
       }
 
-      console.log('Product payload to send to API:', { isNew, payload })
-
       if (isNew) {
-        const response = await api.post('/products', payload)
-        const created = response.data?.data || response.data
-
+        await api.post('/products', payload)
         // Refresh product list cache
         queryClient.invalidateQueries({ queryKey: ['products'] })
 
         // Show success message
         alert('Product created successfully.')
 
-        // Navigate to edit page for the new product unless caller wants to stay
-        if (!opts?.stay && created?._id) {
-          navigate(`/products/${created._id}`)
+        // After creating a new product, go back to the products list unless caller wants to stay
+        if (!opts?.stay) {
+          navigate('/products')
         }
       } else if (id) {
         // Update existing product
-        const response = await api.patch(`/products/${id}`, payload)
-        const updated = response.data?.data || response.data
+        await api.patch(`/products/${id}`, payload)
 
         // Refresh caches for this product and the list
         queryClient.invalidateQueries({ queryKey: ['product', id] })
         queryClient.invalidateQueries({ queryKey: ['products'] })
 
-        console.log('Product updated:', updated)
         alert('Product updated successfully.')
       }
     } catch (error) {
@@ -2506,14 +2488,11 @@ export default function ProductEdit() {
   }
 
   const saveAndStay = (nextTab?: ProductDataTab) => {
-    console.log('saveAndStay called with tab:', nextTab)
     handleSubmit(
       (data) => {
-        console.log('Form validation passed, calling onSubmit with stay=true')
         onSubmit(data, { stay: true, nextTab })
       },
       (errors) => {
-        console.log('Form validation failed:', errors)
         onInvalid(errors)
       }
     )()

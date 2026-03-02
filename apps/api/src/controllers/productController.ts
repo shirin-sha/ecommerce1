@@ -217,40 +217,20 @@ export const getProducts = asyncHandler(async (req: AuthRequest, res: Response) 
   // - If status is explicitly provided (and not 'all'), use it
   // - If no status or status is 'all' and user is admin/shop_manager, show all statuses (no filter)
   // - If no status or status is 'all' and user is customer or not authenticated, show only published
-    const isAdmin = req.user && (req.user.role === 'admin' || req.user.role === 'shop_manager')
-    
-  // Enhanced debug logging
-  console.log('=== Product List Request Debug ===')
-  console.log('Query params:', { status, page, limit, search })
-  console.log('Auth header:', req.headers.authorization ? 'Present' : 'Missing')
-  console.log('User info:', {
-      hasUser: !!req.user,
-    userId: req.user?.id,
-    userEmail: req.user?.email,
-      userRole: req.user?.role,
-      isAdmin,
-  })
-  console.log('Status filter:', { status, statusType: typeof status, isAll: status === 'all' })
-    
+  const isAdmin = req.user && (req.user.role === 'admin' || req.user.role === 'shop_manager')
+  
   if (status && status !== 'all' && status !== '') {
     // Explicit status filter provided (published, draft, or private)
     query.status = status
-    console.log('Applied status filter:', status)
   } else {
     // No status filter or 'all' selected - check user role
     if (!isAdmin) {
       // For customers or unauthenticated users, only show published products
       query.status = 'published'
       query.visibility = { $in: ['visible', 'catalog', 'search'] }
-      console.log('⚠️ User is NOT admin - filtering to published only')
-    } else {
-      console.log('✅ User is admin - showing ALL statuses (no status filter)')
     }
     // For admins/shop_managers with no status filter or 'all', don't add status filter (shows all statuses)
   }
-  
-  console.log('Final query:', JSON.stringify(query, null, 2))
-  console.log('=== End Debug ===')
 
   // Search
   if (search) {
@@ -298,18 +278,6 @@ export const getProducts = asyncHandler(async (req: AuthRequest, res: Response) 
       .lean(),
     Product.countDocuments(query),
   ])
-
-  // Debug: Log returned products statuses
-  const statusCounts = products.reduce((acc: any, p: any) => {
-    acc[p.status] = (acc[p.status] || 0) + 1
-    return acc
-  }, {})
-  console.log('📊 Products returned:', {
-    total,
-    count: products.length,
-    statusBreakdown: statusCounts,
-    productStatuses: products.map((p: any) => ({ id: p._id, title: p.title, status: p.status })),
-  })
 
   // Set cache-control headers to prevent browser caching
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')

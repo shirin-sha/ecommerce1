@@ -96,12 +96,10 @@ export default function Categories() {
       })
 
       if (response.data.success && response.data.data?.url) {
-        let imageUrl = response.data.data.url as string
-        if (imageUrl.startsWith('/')) {
-          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
-          const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
-          imageUrl = baseUrl + imageUrl
-        }
+        // Store the URL exactly as returned by the API.
+        // On local it will typically be a relative path like /uploads/...
+        // On Vercel with Blob Storage it may be a full https URL.
+        const imageUrl = response.data.data.url as string
         setThumbnailUrl(imageUrl)
       } else {
         throw new Error('Upload failed')
