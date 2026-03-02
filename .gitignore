@@ -31,8 +31,7 @@ lerna-debug.log*
 *.sw?
 .DS_Store
 
-# Uploads
-uploads/
+
 
 # Docker
 .dockerignore
