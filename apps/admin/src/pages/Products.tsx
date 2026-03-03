@@ -4,6 +4,7 @@ import { useProducts, useDeleteProduct } from '../hooks/useProducts'
 import { Plus, Search, Filter, Edit, Trash2 } from 'lucide-react'
 import { Product } from '@ecommerce/shared'
 import api from '../lib/api'
+import { getImageUrl } from '../utils/imageUrl'
 
 export default function Products() {
   const [page, setPage] = useState(1)
@@ -250,7 +251,7 @@ export default function Products() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       {product.featuredImage ? (
                         <img
-                          src={product.featuredImage}
+                          src={getImageUrl(product.featuredImage)}
                           alt={product.title}
                           className="w-12 h-12 object-cover rounded"
                         />

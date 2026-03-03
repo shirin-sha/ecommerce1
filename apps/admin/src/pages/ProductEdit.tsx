@@ -10,6 +10,7 @@ import { Product, Variation, Category, Tag } from '@ecommerce/shared'
 import { Save, Eye, Info, Plus, X, Trash2, Upload, Image as ImageIcon, ArrowLeft, ArrowRight, ChevronRight, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import api from '../lib/api'
+import { getImageUrl } from '../utils/imageUrl'
 // Variation hooks are currently not used – variations are managed locally in the form
 
 // Product Image Upload Component
@@ -92,7 +93,7 @@ function ProductImageUpload({ currentImage, onImageUploaded, onImageRemoved }: P
       {preview ? (
         <div className="relative inline-block">
           <img
-            src={preview}
+            src={getImageUrl(preview)}
             alt="Product preview"
             className="w-32 h-32 object-cover rounded-lg border border-gray-300"
           />
@@ -279,7 +280,7 @@ function ProductGalleryUpload({ images, onImagesChange }: ProductGalleryUploadPr
             <div key={index} className="relative group">
               <div className="relative aspect-square rounded-lg border border-gray-300 overflow-hidden bg-gray-100">
                 <img
-                  src={imageUrl}
+                  src={getImageUrl(imageUrl)}
                   alt={`Gallery image ${index + 1}`}
                   className="w-full h-full object-cover"
                 />
@@ -1644,7 +1645,7 @@ function ProductVariationsTab({
                           {v?.image ? (
                             <div className="relative w-full h-full">
                               <img
-                                src={v.image}
+                                src={getImageUrl(v.image)}
                                 alt="Variation"
                                 className="w-full h-full object-cover rounded"
                               />

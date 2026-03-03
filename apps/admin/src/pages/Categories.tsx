@@ -5,6 +5,7 @@ import { useCategories, useCreateCategory, useDeleteCategory, useUpdateCategory 
 import { createCategorySchema, CreateCategoryInput, Category } from '@ecommerce/shared'
 import api from '../lib/api'
 import { Plus, Search, Edit, Trash2, Image as ImageIcon } from 'lucide-react'
+import { getImageUrl } from '../utils/imageUrl'
 
 export default function Categories() {
   const [search, setSearch] = useState('')
@@ -238,7 +239,7 @@ export default function Categories() {
                   {thumbnailUrl ? (
                     <div className="flex flex-col items-center gap-2">
                       <img
-                        src={thumbnailUrl}
+                        src={getImageUrl(thumbnailUrl)}
                         alt="Category thumbnail"
                         className="w-16 h-16 object-cover rounded"
                       />
@@ -361,7 +362,7 @@ export default function Categories() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {category.image ? (
-                          <img src={category.image} alt={category.name} className="w-12 h-12 object-cover rounded" />
+                          <img src={getImageUrl(category.image)} alt={category.name} className="w-12 h-12 object-cover rounded" />
                         ) : (
                           <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400">
                             <ImageIcon className="w-6 h-6" />
