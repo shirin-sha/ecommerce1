@@ -56,7 +56,12 @@ const getAllowedOrigins = () => {
 }
 
 // Middleware
-app.use(helmet())
+app.use(
+  helmet({
+    // Allow images and other resources to be loaded from this API on other origins
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+)
 app.use(
   cors({
     origin: (origin, callback) => {
