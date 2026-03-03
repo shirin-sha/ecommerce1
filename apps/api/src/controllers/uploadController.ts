@@ -13,8 +13,7 @@ export const uploadProductImage = async (req: Request, res: Response) => {
 
     // Get the full path to the uploaded file
     const filePath = path.join(req.file.destination, req.file.filename)
-    
-    // Upload to Blob Storage if on Vercel, or return local path
+    // Get a relative URL under /uploads for storing in the database
     const fileUrl = await getFileUrl(req.file.filename, filePath)
 
     res.json({
