@@ -136,12 +136,14 @@ export const getFileUrl = async (filename: string, filePath?: string): Promise<s
     }
   }
   
-  // If on Vercel but Blob Storage not configured, warn user
+  // If on Vercel but Blob Storage not configured, return API route path
   if ((process.env.VERCEL || process.env.VERCEL_ENV) && !useBlobStorage) {
     console.warn('⚠️ WARNING: On Vercel but Blob Storage not configured!')
     console.warn('   Files in /tmp will be deleted and cannot be served.')
     console.warn('   To fix: Install @vercel/blob and set BLOB_READ_WRITE_TOKEN')
     console.warn('   See: docs/VERCEL_IMAGE_STORAGE.md')
+    // Return API route path so files can be served via /api/v1/uploads/:filename
+    return `/api/v1/uploads/${filename}`
   }
   
   // Local development - return relative path (works with static file serving)

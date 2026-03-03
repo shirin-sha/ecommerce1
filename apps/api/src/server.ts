@@ -58,9 +58,42 @@ app.use(express.urlencoded({
 }))
 app.use(cookieParser())
 
-// Serve static files (uploads)
+// Serve static files (uploads) - works locally
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads')
 app.use('/uploads', express.static(UPLOAD_DIR))
+
+// Serve uploaded files via API route (for Vercel /tmp directory and local uploads)
+// This handles both /api/v1/uploads/:filename and /uploads/:filename requests
+const serveUploadedFile = (req: express.Request, res: express.Response) => {
+  const filename = req.params.filename
+  
+  // Try multiple locations:
+  // 1. /tmp/uploads (Vercel serverless - new uploads)
+  // 2. Local uploads directory (for backward compatibility with old local uploads)
+  const possiblePaths = [
+    path.join('/tmp/uploads', filename),
+    path.join(UPLOAD_DIR, filename),
+  ]
+  
+  // Find the first existing file
+  for (const filePath of possiblePaths) {
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath)
+    }
+  }
+  
+  // File not found in any location
+  res.status(404).json({ success: false, error: 'File not found' })
+}
+
+// API route for /api/v1/uploads/:filename (new Vercel uploads)
+app.get('/api/v1/uploads/:filename', serveUploadedFile)
+
+// Also serve /uploads/:filename via API route on Vercel (for old local uploads)
+// This ensures backward compatibility with images stored as /uploads/... in DB
+if (process.env.VERCEL || process.env.VERCEL_ENV) {
+  app.get('/uploads/:filename', serveUploadedFile)
+}
 
 // Health check
 app.get('/health', (req, res) => {
