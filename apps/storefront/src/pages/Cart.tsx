@@ -1,9 +1,10 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { getImageUrl } from '../utils/imageUrl'
 
 export default function Cart() {
   const { items, total, updateQuantity, removeFromCart, clearCart } = useCart()
+  const navigate = useNavigate()
 
   const hasItems = items.length > 0
 
@@ -123,6 +124,12 @@ export default function Cart() {
             <button
               className="w-full bg-yellow-500 text-gray-900 py-3 rounded-lg font-semibold hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!hasItems}
+              type="button"
+              onClick={() => {
+                if (hasItems) {
+                  navigate('/checkout')
+                }
+              }}
             >
               Proceed to Checkout
             </button>
