@@ -2,27 +2,12 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useProduct } from '../hooks/useProducts'
 import { useCart } from '../context/CartContext'
+import { getImageUrl } from '../utils/imageUrl'
 
 export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>()
   const { data: product, isLoading } = useProduct(slug || '', 'slug')
   const { addToCart } = useCart()
-  
-  // Helper function to get full image URL
-  const getImageUrl = (imagePath?: string): string | undefined => {
-    if (!imagePath) return undefined
-    // If it's already a full URL (http/https), return as is
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-      return imagePath
-    }
-    // If it's a relative path, prepend API base URL
-    if (imagePath.startsWith('/')) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
-      const baseUrl = apiUrl.replace('/api/v1', '').replace(/\/$/, '')
-      return baseUrl + imagePath
-    }
-    return imagePath
-  }
 
   // Get all images: featured image + gallery images
   const allImages = product 
