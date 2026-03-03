@@ -2,6 +2,8 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
+import path from 'path'
+import fs from 'fs'
 import { connectDatabase } from '../src/config/database'
 import { errorHandler } from '../src/middleware/errorHandler'
 import authRoutes from '../src/routes/auth'
@@ -20,6 +22,9 @@ import analyticsRoutes from '../src/routes/analytics'
 import reportsRoutes from '../src/routes/reports'
 
 const app = express()
+
+// Directory where static uploads are stored in the repository (apps/api/uploads)
+const UPLOADS_DIR = path.join(__dirname, '../uploads')
 
 // Get allowed origins from environment
 const getAllowedOrigins = () => {
@@ -124,6 +129,19 @@ app.get('/api/v1', (req, res) => {
     message: 'E-Commerce API',
     version: '1.0.0',
   })
+})
+
+// Static uploads route for images committed under apps/api/uploads
+// Example DB path: /uploads/filename.jpg  ->  https://api-domain/uploads/filename.jpg
+app.get('/uploads/:filename', (req, res) => {
+  const filename = req.params.filename
+  const filePath = path.join(UPLOADS_DIR, filename)
+
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath)
+  }
+
+  return res.status(404).json({ success: false, error: 'File not found' })
 })
 
 app.use('/api/v1/auth', authRoutes)
