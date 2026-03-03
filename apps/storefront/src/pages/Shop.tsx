@@ -91,6 +91,7 @@ export default function Shop() {
                         <img
                           src={getImageUrl(product.featuredImage)}
                           alt={product.title}
+                          loading="lazy"
                           className="w-full h-full object-cover"
                         />
                       ) : (

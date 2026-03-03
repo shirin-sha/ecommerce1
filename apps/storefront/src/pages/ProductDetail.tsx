@@ -61,6 +61,7 @@ export default function ProductDetail() {
               <img
                 src={currentImage}
                 alt={product.title}
+                loading="lazy"
                 className="w-full h-full object-cover"
               />
             ) : (
@@ -87,6 +88,7 @@ export default function ProductDetail() {
                   <img
                     src={image}
                     alt={`${product.title} ${index + 1}`}
+                    loading="lazy"
                     className="w-full h-full object-cover"
                   />
                 </button>

@@ -241,6 +241,7 @@ export default function Categories() {
                       <img
                         src={getImageUrl(thumbnailUrl)}
                         alt="Category thumbnail"
+                        loading="lazy"
                         className="w-16 h-16 object-cover rounded"
                       />
                       <div className="flex gap-2">
@@ -362,7 +363,7 @@ export default function Categories() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {category.image ? (
-                          <img src={getImageUrl(category.image)} alt={category.name} className="w-12 h-12 object-cover rounded" />
+                          <img src={getImageUrl(category.image)} alt={category.name} loading="lazy" className="w-12 h-12 object-cover rounded" />
                         ) : (
                           <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400">
                             <ImageIcon className="w-6 h-6" />

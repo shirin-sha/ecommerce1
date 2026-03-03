@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useProducts, useDeleteProduct } from '../hooks/useProducts'
 import { Plus, Search, Filter, Edit, Trash2 } from 'lucide-react'
 import { Product } from '@ecommerce/shared'
-import api from '../lib/api'
 import { getImageUrl } from '../utils/imageUrl'
 
 export default function Products() {
@@ -12,69 +11,6 @@ export default function Products() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState('')
   const [stockFilter, setStockFilter] = useState('')
-  const [authDebug, setAuthDebug] = useState<any>(null)
-
-  // Debug: Check auth status and try to refresh if needed
-  useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('accessToken')
-      if (token) {
-        try {
-          const { data } = await api.get('/auth/me')
-          setAuthDebug({
-            hasToken: true,
-            user: data.data.user,
-            isAdmin: data.data.user.role === 'admin' || data.data.user.role === 'shop_manager',
-          })
-        } catch (error: any) {
-          // Token expired - try to refresh
-          if (error.response?.status === 401) {
-            try {
-              const refreshResponse = await api.post('/auth/refresh', {}, { withCredentials: true })
-              const newToken = refreshResponse.data.data.accessToken
-              localStorage.setItem('accessToken', newToken)
-              
-              // Retry getting user info
-              const { data } = await api.get('/auth/me')
-              setAuthDebug({
-                hasToken: true,
-                user: data.data.user,
-                isAdmin: data.data.user.role === 'admin' || data.data.user.role === 'shop_manager',
-                refreshed: true,
-              })
-            } catch (refreshError: any) {
-              // Refresh failed - need to login
-              console.error('Token refresh failed:', refreshError)
-              setAuthDebug({
-                hasToken: true,
-                error: `Token expired. Refresh failed: ${refreshError.response?.data?.error || refreshError.message || 'Unknown error'}. Please log in again.`,
-                user: null,
-                isAdmin: false,
-                needsLogin: true,
-              })
-              // Clear invalid token
-              localStorage.removeItem('accessToken')
-            }
-          } else {
-            setAuthDebug({
-              hasToken: true,
-              error: error.message || 'Token invalid or expired',
-              user: null,
-              isAdmin: false,
-            })
-          }
-        }
-      } else {
-        setAuthDebug({
-          hasToken: false,
-          user: null,
-          isAdmin: false,
-          needsLogin: true,
-        })
-      }
-    }
-    checkAuth()
-  }, [])
 
   const { data, isLoading } = useProducts({
     page,
@@ -115,23 +51,6 @@ export default function Products() {
 
   return (
     <div>
-      {/* Debug Info - Remove after debugging */}
-      {authDebug && (
-        <div className={`mb-4 p-4 rounded-lg ${authDebug.isAdmin ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
-          <div className="text-sm flex items-center justify-between">
-          
-            {authDebug.needsLogin && (
-              <Link
-                to="/login"
-                className="ml-4 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-              >
-                Go to Login
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Products</h1>
@@ -253,6 +172,7 @@ export default function Products() {
                         <img
                           src={getImageUrl(product.featuredImage)}
                           alt={product.title}
+                          loading="lazy"
                           className="w-12 h-12 object-cover rounded"
                         />
                       ) : (

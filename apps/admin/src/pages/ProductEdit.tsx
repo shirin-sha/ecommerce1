@@ -95,6 +95,7 @@ function ProductImageUpload({ currentImage, onImageUploaded, onImageRemoved }: P
           <img
             src={getImageUrl(preview)}
             alt="Product preview"
+            loading="lazy"
             className="w-32 h-32 object-cover rounded-lg border border-gray-300"
           />
           <button
@@ -282,6 +283,7 @@ function ProductGalleryUpload({ images, onImagesChange }: ProductGalleryUploadPr
                 <img
                   src={getImageUrl(imageUrl)}
                   alt={`Gallery image ${index + 1}`}
+                  loading="lazy"
                   className="w-full h-full object-cover"
                 />
                 {uploading && uploadingIndex === index && (
@@ -1647,6 +1649,7 @@ function ProductVariationsTab({
                               <img
                                 src={getImageUrl(v.image)}
                                 alt="Variation"
+                                loading="lazy"
                                 className="w-full h-full object-cover rounded"
                               />
                               <button

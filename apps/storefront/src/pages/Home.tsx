@@ -57,6 +57,7 @@ export default function Home() {
                     <img
                       src={getImageUrl(category.image)}
                       alt={category.name}
+                      loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
                   ) : (
@@ -96,6 +97,7 @@ export default function Home() {
                         <img
                           src={getImageUrl(product.featuredImage)}
                           alt={product.title}
+                          loading="lazy"
                           className="w-full h-full object-cover"
                         />
                       ) : (
